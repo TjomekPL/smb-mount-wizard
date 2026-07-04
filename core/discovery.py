@@ -2,20 +2,19 @@ import subprocess
 import concurrent.futures
 
 
+from core.runtime import run
+
+
 def has_smb(ip):
     try:
-        result = subprocess.run(
-            ["nmap", "-p", "445", ip],
-            capture_output=True,
-            text=True,
-            timeout=2
-        )
+        p = run(["nmap", "-p", "445", ip])
 
-        return "445/tcp open" in result.stdout
+        stdout, _ = p.communicate(timeout=2)
+
+        return "445/tcp open" in stdout
 
     except Exception:
         return False
-
 
 def scan_smb_hosts(ip_range="192.168.0"):
     hosts = []
