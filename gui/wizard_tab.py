@@ -13,15 +13,18 @@ from core.discovery import (
     get_smb_shares
 )
 
+from core.auth import AuthDialog
+
 
 class WizardTab(QWidget):
 
     def __init__(self):
         super().__init__()
 
+        self.auth_cache = {}
+
         layout = QVBoxLayout()
 
-        # --- TOP BAR ---
         top = QHBoxLayout()
 
         self.scan_btn = QPushButton("Scan network")
@@ -39,7 +42,6 @@ class WizardTab(QWidget):
         top.addWidget(self.host_input)
         top.addWidget(self.add_btn)
 
-        # --- TREE ---
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["SMB Hosts"])
 
@@ -73,17 +75,31 @@ class WizardTab(QWidget):
         self.host_input.clear()
 
     def load_shares(self, item):
-        # tylko top-level hosty
         if item.parent() is not None:
             return
 
-        # jeśli już załadowane → nie rób drugi raz
-        if item.childCount() == 1 and item.child(0).text(0) != "Loading...":
-            return
+        host = item.text(0)
 
         item.takeChildren()
 
-        shares = get_smb_shares(item.text(0))
+        creds = self.auth_cache.get(host, None)
+
+        shares = None
+
+        if creds:
+            shares = get_smb_shares(host, *creds)
+        else:
+            shares = get_smb_shares(host)
+
+        if shares == ["Login required"]:
+            dialog = AuthDialog(host)
+
+            if dialog.exec():
+                username, password = dialog.get_credentials()
+
+                self.auth_cache[host] = (username, password)
+
+                shares = get_smb_shares(host, username, password)
 
         for share in shares:
             item.addChild(QTreeWidgetItem([share]))

@@ -31,7 +31,6 @@ def scan_smb_hosts(ip_range="192.168.0"):
             except Exception:
                 pass
 
-    # 🔥 SORTOWANIE IP NUMERYCZNE
     try:
         hosts.sort(key=lambda x: ipaddress.ip_address(x))
     except Exception:
@@ -40,10 +39,18 @@ def scan_smb_hosts(ip_range="192.168.0"):
     return hosts
 
 
-def get_smb_shares(host):
+def get_smb_shares(host, username=None, password=None):
+
+    cmd = ["smbclient", "-L", host]
+
+    if username:
+        cmd += ["-U", f"{username}%{password}"]
+    else:
+        cmd += ["-N"]
+
     try:
         result = subprocess.run(
-            ["smbclient", "-L", host, "-N"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=5
