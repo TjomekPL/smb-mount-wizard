@@ -9,9 +9,15 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 
-from core.discovery import scan_smb_hosts, get_smb_shares
+from core.discovery import (
+    scan_smb_hosts,
+    get_smb_shares,
+)
+
 from core.auth import AuthDialog
+
 from core.mount_engine import mount_share
+
 from core.manual_servers import (
     get_servers,
     add_server,
@@ -29,22 +35,39 @@ class WizardTab(QWidget):
 
         top = QHBoxLayout()
 
-        self.scan_btn = QPushButton("Scan network")
-        self.scan_btn.clicked.connect(self.scan)
+        self.scan_btn = QPushButton(
+            "Scan network"
+        )
+        self.scan_btn.clicked.connect(
+            self.scan
+        )
 
         self.host_input = QLineEdit()
         self.host_input.setPlaceholderText(
             "192.168.0.201 / nas.tailnet.ts.net"
         )
 
-        self.add_btn = QPushButton("Add server")
-        self.add_btn.clicked.connect(self.add_manual_server)
+        self.add_btn = QPushButton(
+            "Add server"
+        )
+        self.add_btn.clicked.connect(
+            self.add_manual_server
+        )
 
-        top.addWidget(self.scan_btn)
-        top.addWidget(self.host_input)
-        top.addWidget(self.add_btn)
+        top.addWidget(
+            self.scan_btn
+        )
+
+        top.addWidget(
+            self.host_input
+        )
+
+        top.addWidget(
+            self.add_btn
+        )
 
         self.tree = QTreeWidget()
+
         self.tree.setHeaderLabels(
             ["SMB Hosts / Shares"]
         )
@@ -53,12 +76,43 @@ class WizardTab(QWidget):
             self.load_shares
         )
 
-        layout.addLayout(top)
-        layout.addWidget(self.tree)
+        layout.addLayout(
+            top
+        )
 
-        self.setLayout(layout)
+        layout.addWidget(
+            self.tree
+        )
 
-        self.populate()
+        self.setLayout(
+            layout
+        )
+
+        self.load_saved_servers()
+
+    def load_saved_servers(self):
+
+        self.tree.clear()
+
+        hosts = sorted(
+            get_servers()
+        )
+
+        for host in hosts:
+
+            item = QTreeWidgetItem(
+                [host]
+            )
+
+            item.addChild(
+                QTreeWidgetItem(
+                    ["Loading..."]
+                )
+            )
+
+            self.tree.addTopLevelItem(
+                item
+            )
 
     def populate(self):
 
@@ -101,7 +155,6 @@ class WizardTab(QWidget):
             )
 
     def scan(self):
-
         self.populate()
 
     def add_manual_server(self):
@@ -111,11 +164,13 @@ class WizardTab(QWidget):
         if not host:
             return
 
-        add_server(host)
+        add_server(
+            host
+        )
 
         self.host_input.clear()
 
-        self.populate()
+        self.load_saved_servers()
 
     def load_shares(self, item):
 
@@ -129,7 +184,9 @@ class WizardTab(QWidget):
 
         item.takeChildren()
 
-        creds = self.auth_cache.get(host)
+        creds = self.auth_cache.get(
+            host
+        )
 
         if creds:
 
@@ -146,7 +203,9 @@ class WizardTab(QWidget):
 
         if shares == ["Login required"]:
 
-            dialog = AuthDialog(host)
+            dialog = AuthDialog(
+                host
+            )
 
             if dialog.exec():
 
@@ -178,7 +237,7 @@ class WizardTab(QWidget):
             if share in [
                 "Login required",
                 "Unavailable",
-                "No shares"
+                "No shares",
             ]:
                 continue
 
@@ -209,7 +268,9 @@ class WizardTab(QWidget):
             ):
 
                 creds_local = (
-                    self.auth_cache.get(h)
+                    self.auth_cache.get(
+                        h
+                    )
                 )
 
                 if creds_local:
