@@ -1,6 +1,6 @@
 import subprocess
 import concurrent.futures
-
+import ipaddress
 
 from core.runtime import run
 
@@ -8,13 +8,11 @@ from core.runtime import run
 def has_smb(ip):
     try:
         p = run(["nmap", "-p", "445", ip])
-
         stdout, _ = p.communicate(timeout=2)
-
         return "445/tcp open" in stdout
-
     except Exception:
         return False
+
 
 def scan_smb_hosts(ip_range="192.168.0"):
     hosts = []
@@ -33,15 +31,16 @@ def scan_smb_hosts(ip_range="192.168.0"):
             except Exception:
                 pass
 
-    return sorted(hosts)
+    # 🔥 SORTOWANIE IP NUMERYCZNE
+    try:
+        hosts.sort(key=lambda x: ipaddress.ip_address(x))
+    except Exception:
+        hosts.sort()
+
+    return hosts
 
 
 def get_smb_shares(host):
-    """
-    Proste SMB listing przez smbclient.
-    Jeśli brak dostępu → zwraca 'Login required'
-    """
-
     try:
         result = subprocess.run(
             ["smbclient", "-L", host, "-N"],
@@ -61,10 +60,7 @@ def get_smb_shares(host):
             if len(parts) >= 2 and parts[1] == "Disk":
                 shares.append(parts[0])
 
-        if not shares:
-            return ["No shares"]
-
-        return shares
+        return shares if shares else ["No shares"]
 
     except Exception:
         return ["Unavailable"]
