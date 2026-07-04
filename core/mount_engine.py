@@ -1,7 +1,8 @@
 import subprocess
 import os
 
-MOUNT_BASE = "/mnt/smb"
+# USER SPACE (FIX: no /mnt permission issues)
+MOUNT_BASE = os.path.expanduser("~/mnt/smb-wizard")
 
 
 def ensure_base():
@@ -24,9 +25,12 @@ def mount_share(host, share, username=None, password=None):
     cmd = ["mount", "-t", "cifs", source, target]
 
     if username:
-        cmd += ["-o", f"username={username},password={password},vers=3.0"]
+        cmd += [
+            "-o",
+            f"username={username},password={password},vers=3.0"
+        ]
     else:
-        cmd += ["-o", "guest"]
+        cmd += ["-o", "guest,vers=3.0"]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -38,7 +42,9 @@ def mount_share(host, share, username=None, password=None):
 
 def unmount_share(path):
 
-    result = subprocess.run(["umount", path], capture_output=True, text=True)
+    cmd = ["umount", path]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
         return False, result.stderr
@@ -47,7 +53,7 @@ def unmount_share(path):
 
 
 # =========================
-# REAL STATE (NOWE)
+# REAL SYSTEM STATE
 # =========================
 
 def get_real_mounts():
@@ -78,15 +84,48 @@ def get_real_mounts():
 
 def is_mounted(path):
 
-    mounts = get_real_mounts()
-
-    return any(m["target"] == path for m in mounts)
-
-def is_persistent_mount(path):
-    from core.persistence import get_fstab_mounts
-
-    for m in get_fstab_mounts():
+    for m in get_real_mounts():
         if m["target"] == path:
             return True
 
     return False
+
+
+# =========================
+# TEST MOUNT (SANDBOX)
+# =========================
+
+def test_mount(host="127.0.0.1", share="test"):
+
+    ensure_base()
+
+    target = os.path.join(MOUNT_BASE, "_test")
+
+    os.makedirs(target, exist_ok=True)
+
+    source = f"//{host}/{share}"
+
+    cmd = [
+        "mount",
+        "-t",
+        "cifs",
+        source,
+        target,
+        "-o",
+        "guest,vers=3.0"
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        return {
+            "mounted": False,
+            "target": target,
+            "error": result.stderr
+        }
+
+    return {
+        "mounted": True,
+        "target": target,
+        "error": None
+    }
