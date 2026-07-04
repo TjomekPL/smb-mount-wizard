@@ -1,11 +1,9 @@
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QTabWidget
-)
+from PyQt6.QtWidgets import QMainWindow, QTabWidget
 
 from gui.wizard_tab import WizardTab
 from gui.mounted_tab import MountedTab
 from gui.settings_tab import SettingsTab
+from core.runtime import kill_all
 
 
 class MainWindow(QMainWindow):
@@ -23,3 +21,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(SettingsTab(), "Settings")
 
         self.setCentralWidget(tabs)
+
+    def closeEvent(self, event):
+        kill_all()
+        event.accept()
