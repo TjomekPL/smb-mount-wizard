@@ -1,7 +1,6 @@
 import subprocess
 import os
 
-
 MOUNT_BASE = "/mnt/smb"
 
 
@@ -25,10 +24,7 @@ def mount_share(host, share, username=None, password=None):
     cmd = ["mount", "-t", "cifs", source, target]
 
     if username:
-        cmd += [
-            "-o",
-            f"username={username},password={password},vers=3.0"
-        ]
+        cmd += ["-o", f"username={username},password={password},vers=3.0"]
     else:
         cmd += ["-o", "guest"]
 
@@ -42,9 +38,7 @@ def mount_share(host, share, username=None, password=None):
 
 def unmount_share(path):
 
-    cmd = ["umount", path]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(["umount", path], capture_output=True, text=True)
 
     if result.returncode != 0:
         return False, result.stderr
@@ -52,13 +46,38 @@ def unmount_share(path):
     return True, None
 
 
-def list_mounts():
-    result = subprocess.run(["mount"], capture_output=True, text=True)
+# =========================
+# REAL STATE (NOWE)
+# =========================
+
+def get_real_mounts():
+
+    result = subprocess.run(
+        ["findmnt", "-rn", "-t", "cifs"],
+        capture_output=True,
+        text=True
+    )
 
     mounts = []
 
     for line in result.stdout.splitlines():
-        if "/mnt/smb" in line:
-            mounts.append(line)
+
+        parts = line.split()
+
+        if len(parts) >= 2:
+            source = parts[0]
+            target = parts[1]
+
+            mounts.append({
+                "source": source,
+                "target": target
+            })
 
     return mounts
+
+
+def is_mounted(path):
+
+    mounts = get_real_mounts()
+
+    return any(m["target"] == path for m in mounts)

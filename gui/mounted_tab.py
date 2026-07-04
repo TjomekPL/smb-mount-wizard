@@ -1,12 +1,11 @@
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QLabel,
     QPushButton,
     QListWidget
 )
 
-from core.mount_engine import list_mounts, unmount_share
+from core.mount_engine import get_real_mounts, unmount_share
 
 
 class MountedTab(QWidget):
@@ -33,14 +32,19 @@ class MountedTab(QWidget):
         self.refresh()
 
     def refresh(self):
+
         self.list.clear()
 
-        mounts = list_mounts()
+        mounts = get_real_mounts()
 
         for m in mounts:
-            self.list.addItem(m)
+
+            text = f"{m['source']} -> {m['target']}"
+
+            self.list.addItem(text)
 
     def unmount(self):
+
         item = self.list.currentItem()
 
         if not item:
@@ -48,7 +52,7 @@ class MountedTab(QWidget):
 
         line = item.text()
 
-        path = line.split(" on ")[1].split(" type")[0]
+        path = line.split("->")[1].strip()
 
         unmount_share(path)
 
