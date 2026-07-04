@@ -1,19 +1,16 @@
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QLabel,
+    QHBoxLayout,
     QPushButton,
-    QListWidget,
-    QMessageBox
+    QTreeWidget,
+    QTreeWidgetItem,
+    QMessageBox,
 )
 
-from core.mount_engine import (
-    get_real_mounts,
-    unmount_share,
-    test_mount
-)
+from PyQt6.QtCore import QTimer
 
-from core.persistence import get_persistent_mounts
+from core.mount_engine import get_real_mounts, unmount_share
 
 
 class MountedTab(QWidget):
@@ -23,94 +20,78 @@ class MountedTab(QWidget):
 
         layout = QVBoxLayout()
 
-        # --- BUTTONS ---
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.clicked.connect(self.refresh)
+        # ---------------- TREE ----------------
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["Source", "Mountpoint"])
 
-        self.test_btn = QPushButton("Test mount")
-        self.test_btn.clicked.connect(self.run_test_mount)
+        layout.addWidget(self.tree)
+
+        # ---------------- BUTTONS ----------------
+        btns = QHBoxLayout()
+
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.clicked.connect(self.load_mounts)
 
         self.unmount_btn = QPushButton("Unmount selected")
-        self.unmount_btn.clicked.connect(self.unmount)
+        self.unmount_btn.clicked.connect(self.unmount_selected)
 
-        # --- LISTS ---
-        self.active_list = QListWidget()
-        self.persistent_list = QListWidget()
+        btns.addWidget(self.refresh_btn)
+        btns.addWidget(self.unmount_btn)
 
-        # --- LAYOUT ---
-        layout.addWidget(QLabel("Active mounts"))
-        layout.addWidget(self.refresh_btn)
-        layout.addWidget(self.test_btn)
-        layout.addWidget(self.active_list)
-        layout.addWidget(self.unmount_btn)
-
-        layout.addWidget(QLabel("Persistent mounts (fstab/systemd)"))
-        layout.addWidget(self.persistent_list)
+        layout.addLayout(btns)
 
         self.setLayout(layout)
 
-        self.refresh()
+        # auto refresh (co 3s)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.load_mounts)
+        self.timer.start(3000)
 
-    def refresh(self):
+        self.load_mounts()
 
-        self.active_list.clear()
-        self.persistent_list.clear()
+    # ---------------- LOAD ----------------
+    def load_mounts(self):
 
-        # ACTIVE mounts (kernel state)
-        for m in get_real_mounts():
-            self.active_list.addItem(
-                f"{m['source']} -> {m['target']}"
-            )
-
-        # PERSISTENT mounts
-        persistent = get_persistent_mounts()
-
-        for m in persistent["fstab"]:
-            self.persistent_list.addItem(
-                f"[fstab] {m['source']} -> {m['target']}"
-            )
-
-        for m in persistent["systemd"]:
-            self.persistent_list.addItem(
-                f"[systemd] {m['unit']}"
-            )
-
-    def unmount(self):
-
-        item = self.active_list.currentItem()
-
-        if not item:
-            return
-
-        line = item.text()
+        self.tree.clear()
 
         try:
-            path = line.split("->")[1].strip()
+            mounts = get_real_mounts()
         except Exception:
+            mounts = []
+
+        for m in mounts:
+
+            item = QTreeWidgetItem([
+                m.get("source", ""),
+                m.get("target", "")
+            ])
+
+            self.tree.addTopLevelItem(item)
+
+    # ---------------- UNMOUNT ----------------
+    def unmount_selected(self):
+
+        selected = self.tree.selectedItems()
+
+        if not selected:
             return
 
-        ok, err = unmount_share(path)
+        path = selected[0].text(1)
+
+        try:
+            res = unmount_share(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+            return
+
+        if isinstance(res, dict):
+            ok = res.get("success", False)
+            err = res.get("stderr", "")
+        else:
+            ok = bool(res)
+            err = ""
 
         if not ok:
-            QMessageBox.critical(self, "Unmount error", err)
+            QMessageBox.critical(self, "Unmount failed", err or "Unknown error")
 
-        self.refresh()
-
-    def run_test_mount(self):
-
-        result = test_mount()
-
-        if result["mounted"]:
-            QMessageBox.information(
-                self,
-                "Test mount",
-                f"OK mounted at {result['target']}"
-            )
-        else:
-            QMessageBox.critical(
-                self,
-                "Test mount failed",
-                result["error"]
-            )
-
-        self.refresh()
+        self.load_mounts()

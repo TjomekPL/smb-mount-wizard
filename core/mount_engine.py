@@ -2,8 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 
-
-BASE_DIR = Path.home() / ".local/share/smb-mount-wizard/mounts"
+BASE_DIR = Path("/mnt/smb-mount-wizard")
 
 
 def ensure_base_dir():
@@ -19,231 +18,123 @@ def get_mount_path(server, share):
 
     path = BASE_DIR / safe_server / safe_share
 
-    path.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    path.mkdir(parents=True, exist_ok=True)
 
     return str(path)
 
 
-def mount_share(
-        server,
-        share,
-        username,
-        password,
-        smb_version="3.0"
-):
+def mount_share(server, share, username=None, password=None, smb_version="3.0"):
 
-    target = get_mount_path(
-        server,
-        share
-    )
+    target = get_mount_path(server, share)
+
+    creds = ""
+
+    if username:
+        creds = (
+            f"username={username},"
+            f"password={password},"
+        )
+    else:
+        creds = "guest,"
 
     cmd = [
-
         "pkexec",
-
         "mount",
-
         "-t",
-
         "cifs",
-
         f"//{server}/{share}",
-
         target,
-
         "-o",
-
         (
-
-            f"username={username},"
-
-            f"password={password},"
-
+            creds +
             f"vers={smb_version},"
-
             f"uid={os.getuid()},"
-
-            f"gid={os.getgid()}"
-
+            f"gid={os.getgid()},"
+            "iocharset=utf8"
         )
-
     ]
 
     result = subprocess.run(
-
         cmd,
-
         capture_output=True,
-
         text=True
-
     )
 
     return {
-
         "success": result.returncode == 0,
-
         "stdout": result.stdout,
-
         "stderr": result.stderr,
-
         "mountpoint": target
-
     }
-
-
-def unmount(path):
-
-    result = subprocess.run(
-
-        [
-
-            "pkexec",
-
-            "umount",
-
-            path
-
-        ],
-
-        capture_output=True,
-
-        text=True
-
-    )
-
-    return (
-
-        result.returncode == 0,
-
-        result.stderr
-
-    )
 
 
 def unmount_share(path):
 
-    return unmount(path)
+    result = subprocess.run(
+        ["pkexec", "umount", path],
+        capture_output=True,
+        text=True
+    )
 
-
-def is_mounted(path):
-
-    try:
-
-        mounts = subprocess.check_output(
-
-            ["mount"],
-
-            text=True
-
-        )
-
-        return path in mounts
-
-    except Exception:
-
-        return False
+    return {
+        "success": result.returncode == 0,
+        "stdout": result.stdout,
+        "stderr": result.stderr
+    }
 
 
 def detect_mounts():
 
+    try:
+        out = subprocess.check_output(["mount"], text=True)
+    except Exception:
+        return []
+
     mounts = []
 
-    try:
+    for line in out.splitlines():
 
-        output = subprocess.check_output(
+        if "type cifs" not in line:
+            continue
 
-            ["mount"],
+        parts = line.split()
 
-            text=True
-
-        )
-
-        for line in output.splitlines():
-
-            if " type cifs " not in line:
-
-                continue
-
-            parts = line.split()
-
-            source = parts[0]
-
-            target = parts[2]
-
-            mounts.append({
-
-                "source": source,
-
-                "target": target
-
-            })
-
-    except Exception:
-
-        pass
+        mounts.append({
+            "source": parts[0],
+            "target": parts[2]
+        })
 
     return mounts
 
 
-def get_real_mounts():
+def test_mount(server, share, username=None, password=None):
 
+    res = mount_share(server, share, username, password)
+
+    if not res["success"]:
+        return {
+            "ok": False,
+            "error": res["stderr"] or res["stdout"]
+        }
+
+    # natychmiast unmount testowy
+    subprocess.run(["pkexec", "umount", res["mountpoint"]])
+
+    return {"ok": True}
+
+
+def list_mounts():
+    return detect_mounts()
+
+# --- TEMP compatibility layer for GUI ---
+
+def get_real_mounts():
     return detect_mounts()
 
 
 def list_mounts():
-
     return detect_mounts()
 
 
-def test_mount():
-
-    mounts = detect_mounts()
-
-    return {
-
-        "mounted": len(mounts) > 0,
-
-        "count": len(mounts),
-
-        "mounts": mounts
-
-    }
-
-
-def cleanup_unused_dirs():
-
-    ensure_base_dir()
-
-    active = {
-
-        m["target"]
-
-        for m in detect_mounts()
-
-    }
-
-    for root, dirs, files in os.walk(
-
-            BASE_DIR,
-
-            topdown=False
-
-    ):
-
-        if root == str(BASE_DIR):
-
-            continue
-
-        if root not in active:
-
-            try:
-
-                os.rmdir(root)
-
-            except Exception:
-
-                pass
+def unmount_share(path):
+    return unmount(path)

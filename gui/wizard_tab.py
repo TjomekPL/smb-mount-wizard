@@ -69,7 +69,7 @@ class WizardTab(QWidget):
 
         self.load_saved_servers()
 
-    # ---------------- LOAD ROOT ----------------
+    # ---------------- LOAD SERVERS ----------------
     def load_saved_servers(self):
 
         self.tree.clear()
@@ -103,7 +103,7 @@ class WizardTab(QWidget):
 
         self.load_saved_servers()
 
-    # ---------------- REMOVE SERVER (FIXED) ----------------
+    # ---------------- REMOVE SERVER ----------------
     def remove_manual_server(self):
 
         selected = self.tree.selectedItems()
@@ -111,8 +111,7 @@ class WizardTab(QWidget):
         if not selected:
             return
 
-        item = selected[0]
-        host = item.text(0)
+        host = selected[0].text(0)
 
         remove_server(host)
 
@@ -138,6 +137,7 @@ class WizardTab(QWidget):
         else:
             shares = get_smb_shares(host)
 
+        # login required flow
         if shares == ["Login required"]:
 
             dialog = AuthDialog(host)
@@ -166,12 +166,16 @@ class WizardTab(QWidget):
             lay.addWidget(btn)
 
             def on_mount(h=host, s=share):
+
                 creds_local = self.auth_cache.get(h)
 
                 if creds_local:
-                    mount_share(h, s, *creds_local)
+                    res = mount_share(h, s, *creds_local)
                 else:
-                    mount_share(h, s)
+                    res = mount_share(h, s)
+
+                # REAL FEEDBACK (kluczowe)
+                print("MOUNT RESULT:", res)
 
             btn.clicked.connect(on_mount)
 
