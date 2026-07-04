@@ -81,3 +81,12 @@ def is_mounted(path):
     mounts = get_real_mounts()
 
     return any(m["target"] == path for m in mounts)
+
+def is_persistent_mount(path):
+    from core.persistence import get_fstab_mounts
+
+    for m in get_fstab_mounts():
+        if m["target"] == path:
+            return True
+
+    return False
