@@ -33,8 +33,7 @@ def scan_smb_hosts(ip_range="192.168.0"):
     hosts = []
 
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=50
-    ) as ex:
+            max_workers=50) as ex:
 
         futures = {
 
@@ -65,3 +64,45 @@ def scan_smb_hosts(ip_range="192.168.0"):
                 pass
 
     return sorted(hosts)
+
+
+def get_smb_shares(host):
+
+    try:
+
+        result = subprocess.run(
+
+            [
+                "smbclient",
+                "-L",
+                host,
+                "-N"
+            ],
+
+            capture_output=True,
+            text=True,
+            timeout=5
+
+        )
+
+        if result.returncode != 0:
+
+            return ["Login required"]
+
+        shares = []
+
+        for line in result.stdout.splitlines():
+
+            parts = line.split()
+
+            if len(parts) >= 2:
+
+                if parts[1] == "Disk":
+
+                    shares.append(parts[0])
+
+        return shares
+
+    except Exception:
+
+        return ["Unavailable"]
