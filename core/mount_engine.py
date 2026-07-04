@@ -1,131 +1,249 @@
-import subprocess
 import os
-
-# USER SPACE (FIX: no /mnt permission issues)
-MOUNT_BASE = os.path.expanduser("~/mnt/smb-wizard")
-
-
-def ensure_base():
-    os.makedirs(MOUNT_BASE, exist_ok=True)
+import subprocess
+from pathlib import Path
 
 
-def build_path(host, share):
-    return os.path.join(MOUNT_BASE, host, share)
+BASE_DIR = Path.home() / ".local/share/smb-mount-wizard/mounts"
 
 
-def mount_share(host, share, username=None, password=None):
+def ensure_base_dir():
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
 
-    ensure_base()
 
-    target = build_path(host, share)
-    os.makedirs(target, exist_ok=True)
+def get_mount_path(server, share):
 
-    source = f"//{host}/{share}"
+    ensure_base_dir()
 
-    cmd = ["mount", "-t", "cifs", source, target]
+    safe_server = server.replace(".", "_")
+    safe_share = share.replace("/", "_")
 
-    if username:
-        cmd += [
-            "-o",
-            f"username={username},password={password},vers=3.0"
-        ]
-    else:
-        cmd += ["-o", "guest,vers=3.0"]
+    path = BASE_DIR / safe_server / safe_share
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    path.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    if result.returncode != 0:
-        return False, result.stderr
+    return str(path)
 
-    return True, target
+
+def mount_share(
+        server,
+        share,
+        username,
+        password,
+        smb_version="3.0"
+):
+
+    target = get_mount_path(
+        server,
+        share
+    )
+
+    cmd = [
+
+        "pkexec",
+
+        "mount",
+
+        "-t",
+
+        "cifs",
+
+        f"//{server}/{share}",
+
+        target,
+
+        "-o",
+
+        (
+
+            f"username={username},"
+
+            f"password={password},"
+
+            f"vers={smb_version},"
+
+            f"uid={os.getuid()},"
+
+            f"gid={os.getgid()}"
+
+        )
+
+    ]
+
+    result = subprocess.run(
+
+        cmd,
+
+        capture_output=True,
+
+        text=True
+
+    )
+
+    return {
+
+        "success": result.returncode == 0,
+
+        "stdout": result.stdout,
+
+        "stderr": result.stderr,
+
+        "mountpoint": target
+
+    }
+
+
+def unmount(path):
+
+    result = subprocess.run(
+
+        [
+
+            "pkexec",
+
+            "umount",
+
+            path
+
+        ],
+
+        capture_output=True,
+
+        text=True
+
+    )
+
+    return (
+
+        result.returncode == 0,
+
+        result.stderr
+
+    )
 
 
 def unmount_share(path):
 
-    cmd = ["umount", path]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        return False, result.stderr
-
-    return True, None
-
-
-# =========================
-# REAL SYSTEM STATE
-# =========================
-
-def get_real_mounts():
-
-    result = subprocess.run(
-        ["findmnt", "-rn", "-t", "cifs"],
-        capture_output=True,
-        text=True
-    )
-
-    mounts = []
-
-    for line in result.stdout.splitlines():
-
-        parts = line.split()
-
-        if len(parts) >= 2:
-            source = parts[0]
-            target = parts[1]
-
-            mounts.append({
-                "source": source,
-                "target": target
-            })
-
-    return mounts
+    return unmount(path)
 
 
 def is_mounted(path):
 
-    for m in get_real_mounts():
-        if m["target"] == path:
-            return True
+    try:
 
-    return False
+        mounts = subprocess.check_output(
+
+            ["mount"],
+
+            text=True
+
+        )
+
+        return path in mounts
+
+    except Exception:
+
+        return False
 
 
-# =========================
-# TEST MOUNT (SANDBOX)
-# =========================
+def detect_mounts():
 
-def test_mount(host="127.0.0.1", share="test"):
+    mounts = []
 
-    ensure_base()
+    try:
 
-    target = os.path.join(MOUNT_BASE, "_test")
+        output = subprocess.check_output(
 
-    os.makedirs(target, exist_ok=True)
+            ["mount"],
 
-    source = f"//{host}/{share}"
+            text=True
 
-    cmd = [
-        "mount",
-        "-t",
-        "cifs",
-        source,
-        target,
-        "-o",
-        "guest,vers=3.0"
-    ]
+        )
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+        for line in output.splitlines():
 
-    if result.returncode != 0:
-        return {
-            "mounted": False,
-            "target": target,
-            "error": result.stderr
-        }
+            if " type cifs " not in line:
+
+                continue
+
+            parts = line.split()
+
+            source = parts[0]
+
+            target = parts[2]
+
+            mounts.append({
+
+                "source": source,
+
+                "target": target
+
+            })
+
+    except Exception:
+
+        pass
+
+    return mounts
+
+
+def get_real_mounts():
+
+    return detect_mounts()
+
+
+def list_mounts():
+
+    return detect_mounts()
+
+
+def test_mount():
+
+    mounts = detect_mounts()
 
     return {
-        "mounted": True,
-        "target": target,
-        "error": None
+
+        "mounted": len(mounts) > 0,
+
+        "count": len(mounts),
+
+        "mounts": mounts
+
     }
+
+
+def cleanup_unused_dirs():
+
+    ensure_base_dir()
+
+    active = {
+
+        m["target"]
+
+        for m in detect_mounts()
+
+    }
+
+    for root, dirs, files in os.walk(
+
+            BASE_DIR,
+
+            topdown=False
+
+    ):
+
+        if root == str(BASE_DIR):
+
+            continue
+
+        if root not in active:
+
+            try:
+
+                os.rmdir(root)
+
+            except Exception:
+
+                pass
