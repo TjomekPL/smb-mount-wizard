@@ -10,9 +10,9 @@ from PyQt6.QtWidgets import (
     QMessageBox
 )
 
-from core.discovery import scan_smb_hosts, get_smb_shares
+from core.discovery import scan_smb_hosts, get_smb_shares, share_accessible_as_guest
 from core.auth import AuthDialog
-from core.mount_engine import mount_share
+from core.mount_engine import mount_share, get_real_mounts
 from core.manual_servers import get_servers, add_server
 
 
@@ -132,6 +132,11 @@ class WizardTab(QWidget):
                 self.auth_cache[host] = (username, password)
                 shares = get_smb_shares(host, username, password)
 
+        try:
+            active_sources = {m["source"].lower() for m in get_real_mounts()}
+        except Exception:
+            active_sources = set()
+
         for share in shares:
             share = str(share)
 
@@ -141,14 +146,17 @@ class WizardTab(QWidget):
             if share in ["Login required", "Unavailable", "No shares"]:
                 continue
 
-            btn = QPushButton("Mount")
+            is_mounted = f"//{host}/{share}".lower() in active_sources
+
+            btn = QPushButton("Mounted" if is_mounted else "Mount")
+            btn.setEnabled(not is_mounted)
 
             container = QFrame()
             lay = QHBoxLayout(container)
             lay.setContentsMargins(0, 0, 0, 0)
             lay.addWidget(btn)
 
-            def on_mount(_checked=False, h=host, s=share):
+            def on_mount(_checked=False, h=host, s=share, btn=btn):
 
                 # twarda ochrona przed śmieciami z Qt
                 if not isinstance(h, str) or not isinstance(s, str):
@@ -161,13 +169,26 @@ class WizardTab(QWidget):
 
                 creds_local = self.auth_cache.get(h)
 
+                # Sprawdzamy PRZED wywołaniem pkexec, czy w ogóle trzeba się
+                # logować - dzięki temu pkexec (hasło do konta) woła się
+                # tylko raz, zamiast dwa razy (próba-gościa + próba z danymi).
+                if not creds_local and not share_accessible_as_guest(h, s):
+                    dialog = AuthDialog(h)
+
+                    if not dialog.exec():
+                        return  # użytkownik anulował logowanie
+
+                    username, password = dialog.get_credentials()
+                    creds_local = (username, password)
+                    self.auth_cache[h] = creds_local
+
                 if creds_local:
                     result = mount_share(h, s, *creds_local)
                 else:
                     result = mount_share(h, s)
 
-                # Jeśli mount się nie udał z powodu braku uprawnień,
-                # poproś o login zamiast dawać się zablokować na terminalu
+                # Fallback na wszelki wypadek: gdyby próba gościa mimo
+                # wszystko wywaliła się permission-denied.
                 stderr = (result.get("stderr") or "").lower()
                 needs_auth = (
                     not result.get("success")
@@ -185,6 +206,9 @@ class WizardTab(QWidget):
                         result = mount_share(h, s, username, password)
 
                 if result.get("success"):
+                    btn.setText("Mounted")
+                    btn.setEnabled(False)
+
                     QMessageBox.information(
                         self,
                         "Mounted",

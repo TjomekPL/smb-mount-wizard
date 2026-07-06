@@ -65,6 +65,26 @@ def scan_smb_hosts(ip_range=None):
     return hosts
 
 
+def share_accessible_as_guest(host, share):
+    """
+    Sprawdza (bez roota, bez pkexec) czy dany udział da się odczytać
+    anonimowo. Używane, żeby ustalić PRZED wywołaniem 'pkexec mount'
+    czy w ogóle trzeba pytać o dane logowania - dzięki temu unikamy
+    podwójnego pytania o hasło do konta (raz na próbę-gościa,
+    drugi raz na próbę z danymi).
+    """
+    try:
+        result = subprocess.run(
+            ["smbclient", f"//{host}/{share}", "-N", "-c", "ls"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def get_smb_shares(host, username=None, password=None):
     cmd = ["smbclient", "-L", host]
 
