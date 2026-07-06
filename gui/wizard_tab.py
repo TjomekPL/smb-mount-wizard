@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from core.discovery import scan_smb_hosts, get_smb_shares, share_accessible_as_guest
 from core.auth import AuthDialog
 from core.mount_engine import mount_share, get_real_mounts
-from core.manual_servers import get_servers, add_server
+from core.manual_servers import get_servers, add_server, remove_server
 
 
 class WizardTab(QWidget):
@@ -45,6 +45,7 @@ class WizardTab(QWidget):
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(["SMB Hosts / Shares", ""])
 
+        # stała szerokość pierwszej kolumny (żeby IP nie ucinało się przy starcie)
         self.tree.setColumnWidth(0, 350)
 
         self.tree.itemExpanded.connect(self.load_shares)
@@ -56,6 +57,38 @@ class WizardTab(QWidget):
 
         self.load_saved_servers()
 
+    def add_host_row(self, host):
+        host = str(host) if host is not None else ""
+
+        item = QTreeWidgetItem([host])
+        item.addChild(QTreeWidgetItem(["Loading..."]))
+        self.tree.addTopLevelItem(item)
+
+        remove_btn = QPushButton("\u2715")
+        remove_btn.setFixedSize(22, 22)
+        remove_btn.setToolTip("Remove this server from the list")
+
+        def on_remove(_checked=False, h=host, item=item):
+            remove_server(h)
+
+            index = self.tree.indexOfTopLevelItem(item)
+            if index != -1:
+                self.tree.takeTopLevelItem(index)
+
+        remove_btn.clicked.connect(on_remove)
+
+        # wrapper widget, żeby przycisk był przyklejony do prawej
+        # krawędzi kolumny zamiast rozciągać się na całą jej szerokość
+        remove_container = QFrame()
+        remove_lay = QHBoxLayout(remove_container)
+        remove_lay.setContentsMargins(0, 0, 4, 0)
+        remove_lay.addStretch()
+        remove_lay.addWidget(remove_btn)
+
+        self.tree.setItemWidget(item, 1, remove_container)
+
+        return item
+
     def load_saved_servers(self):
         self.tree.clear()
 
@@ -63,11 +96,7 @@ class WizardTab(QWidget):
         hosts = sorted(list(set(hosts)))
 
         for host in hosts:
-            host = str(host) if host is not None else ""
-
-            item = QTreeWidgetItem([host])
-            item.addChild(QTreeWidgetItem(["Loading..."]))
-            self.tree.addTopLevelItem(item)
+            self.add_host_row(host)
 
     def scan(self):
         hosts = []
@@ -83,11 +112,7 @@ class WizardTab(QWidget):
         self.tree.clear()
 
         for host in hosts:
-            host = str(host) if host is not None else ""
-
-            item = QTreeWidgetItem([host])
-            item.addChild(QTreeWidgetItem(["Loading..."]))
-            self.tree.addTopLevelItem(item)
+            self.add_host_row(host)
 
     def add_manual_server(self):
         host = self.host_input.text().strip()
