@@ -17,13 +17,7 @@ def get_servers():
     ensure()
 
     try:
-        data = json.loads(CONFIG_FILE.read_text())
-
-        if isinstance(data, list):
-            return data
-
-        return []
-
+        return json.loads(CONFIG_FILE.read_text())
     except Exception:
         return []
 
@@ -31,22 +25,11 @@ def get_servers():
 def save_servers(servers):
     ensure()
 
-    # deduplikacja + sortowanie
     servers = sorted(list(set(servers)))
 
-    tmp_file = CONFIG_FILE.with_suffix(".tmp")
-
-    try:
-        tmp_file.write_text(
-            json.dumps(servers, indent=4)
-        )
-
-        tmp_file.replace(CONFIG_FILE)
-
-    except Exception:
-        # fallback – nie psuj istniejącego pliku
-        if tmp_file.exists():
-            tmp_file.unlink()
+    CONFIG_FILE.write_text(
+        json.dumps(servers, indent=4)
+    )
 
 
 def add_server(server):
@@ -60,9 +43,5 @@ def add_server(server):
 
 def remove_server(server):
     servers = get_servers()
-
-    servers = [
-        s for s in servers if s != server
-    ]
-
+    servers = [s for s in servers if s != server]
     save_servers(servers)

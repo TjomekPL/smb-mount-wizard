@@ -1,7 +1,6 @@
 import subprocess
 import concurrent.futures
 import ipaddress
-
 from core.runtime import run
 
 
@@ -40,7 +39,6 @@ def scan_smb_hosts(ip_range="192.168.0"):
 
 
 def get_smb_shares(host, username=None, password=None):
-
     cmd = ["smbclient", "-L", host]
 
     if username:
@@ -49,12 +47,7 @@ def get_smb_shares(host, username=None, password=None):
         cmd += ["-N"]
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
         if result.returncode != 0:
             return ["Login required"]
@@ -63,7 +56,6 @@ def get_smb_shares(host, username=None, password=None):
 
         for line in result.stdout.splitlines():
             parts = line.split()
-
             if len(parts) >= 2 and parts[1] == "Disk":
                 shares.append(parts[0])
 
