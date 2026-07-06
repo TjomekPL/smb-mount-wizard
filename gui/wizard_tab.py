@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
+    QCheckBox,
     QLineEdit,
     QTreeWidget,
     QTreeWidgetItem,
@@ -31,7 +32,7 @@ class WizardTab(QWidget):
         self.scan_btn.clicked.connect(self.scan)
 
         self.host_input = QLineEdit()
-        self.host_input.setPlaceholderText("192.168.0.201 / nas.local")
+        self.host_input.setPlaceholderText("adres IP lub nazwa hosta (np. nas.local)")
 
         self.add_btn = QPushButton("Add server")
         self.add_btn.clicked.connect(self.add_manual_server)
@@ -44,7 +45,6 @@ class WizardTab(QWidget):
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels(["SMB Hosts / Shares", ""])
 
-        # stała szerokość pierwszej kolumny (żeby IP nie ucinało się przy starcie)
         self.tree.setColumnWidth(0, 350)
 
         self.tree.itemExpanded.connect(self.load_shares)
@@ -151,12 +151,20 @@ class WizardTab(QWidget):
             btn = QPushButton("Mounted" if is_mounted else "Mount")
             btn.setEnabled(not is_mounted)
 
+            persist_checkbox = QCheckBox("Na stałe")
+            persist_checkbox.setToolTip(
+                "Dodaje trwały wpis w /etc/fstab - udział zamontuje się "
+                "sam po restarcie systemu."
+            )
+            persist_checkbox.setEnabled(not is_mounted)
+
             container = QFrame()
             lay = QHBoxLayout(container)
             lay.setContentsMargins(0, 0, 0, 0)
             lay.addWidget(btn)
+            lay.addWidget(persist_checkbox)
 
-            def on_mount(_checked=False, h=host, s=share, btn=btn):
+            def on_mount(_checked=False, h=host, s=share, btn=btn, persist_cb=persist_checkbox):
 
                 # twarda ochrona przed śmieciami z Qt
                 if not isinstance(h, str) or not isinstance(s, str):
@@ -168,6 +176,7 @@ class WizardTab(QWidget):
                     return
 
                 creds_local = self.auth_cache.get(h)
+                persist = persist_cb.isChecked()
 
                 # Sprawdzamy PRZED wywołaniem pkexec, czy w ogóle trzeba się
                 # logować - dzięki temu pkexec (hasło do konta) woła się
@@ -183,9 +192,9 @@ class WizardTab(QWidget):
                     self.auth_cache[h] = creds_local
 
                 if creds_local:
-                    result = mount_share(h, s, *creds_local)
+                    result = mount_share(h, s, *creds_local, persist=persist)
                 else:
-                    result = mount_share(h, s)
+                    result = mount_share(h, s, persist=persist)
 
                 # Fallback na wszelki wypadek: gdyby próba gościa mimo
                 # wszystko wywaliła się permission-denied.
@@ -203,11 +212,12 @@ class WizardTab(QWidget):
                         username, password = dialog.get_credentials()
 
                         self.auth_cache[h] = (username, password)
-                        result = mount_share(h, s, username, password)
+                        result = mount_share(h, s, username, password, persist=persist)
 
                 if result.get("success"):
                     btn.setText("Mounted")
                     btn.setEnabled(False)
+                    persist_cb.setEnabled(False)
 
                     QMessageBox.information(
                         self,

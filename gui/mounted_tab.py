@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
+    QCheckBox,
     QTreeWidget,
     QTreeWidgetItem,
     QMessageBox,
@@ -20,38 +21,40 @@ class MountedTab(QWidget):
 
         layout = QVBoxLayout()
 
-        # ---------------- TREE ----------------
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Source", "Mountpoint"])
 
         layout.addWidget(self.tree)
 
-        # ---------------- BUTTONS ----------------
         btns = QHBoxLayout()
 
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.clicked.connect(self.load_mounts)
 
+        self.remove_fstab_checkbox = QCheckBox("Usuń też trwały wpis (fstab)")
+        self.remove_fstab_checkbox.setToolTip(
+            "Zaznacz, jeśli ten udział był zamontowany opcją 'Na stałe' "
+            "i chcesz, żeby przestał się montować po restarcie."
+        )
+
         self.unmount_btn = QPushButton("Unmount selected")
         self.unmount_btn.clicked.connect(self.unmount_selected)
 
         btns.addWidget(self.refresh_btn)
+        btns.addWidget(self.remove_fstab_checkbox)
         btns.addWidget(self.unmount_btn)
 
         layout.addLayout(btns)
 
         self.setLayout(layout)
 
-        # auto refresh (co 3s)
         self.timer = QTimer()
         self.timer.timeout.connect(self.load_mounts)
         self.timer.start(3000)
 
         self.load_mounts()
 
-    # ---------------- LOAD ----------------
     def load_mounts(self):
-
         self.tree.clear()
 
         try:
@@ -60,26 +63,23 @@ class MountedTab(QWidget):
             mounts = []
 
         for m in mounts:
-
             item = QTreeWidgetItem([
                 m.get("source", ""),
                 m.get("target", "")
             ])
-
             self.tree.addTopLevelItem(item)
 
-    # ---------------- UNMOUNT ----------------
     def unmount_selected(self):
-
         selected = self.tree.selectedItems()
 
         if not selected:
             return
 
         path = selected[0].text(1)
+        remove_fstab = self.remove_fstab_checkbox.isChecked()
 
         try:
-            res = unmount_share(path)
+            res = unmount_share(path, remove_fstab=remove_fstab)
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
             return

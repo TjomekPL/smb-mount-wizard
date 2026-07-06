@@ -1,17 +1,13 @@
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
-BASE_DIR = Path.home() / ".local/share/smb-mount-wizard/mounts"
-
-
-def ensure_base_dir():
-    BASE_DIR.mkdir(parents=True, exist_ok=True)
+from core.settings import get_default_mount_base
+from core.fstab import build_persist_fragment, remove_fstab_line
 
 
 def get_mount_path(server, share):
-    ensure_base_dir()
-
     # zabezpieczenie przed "False", None itd.
     if not isinstance(server, str):
         raise ValueError(f"Invalid server: {server}")
@@ -21,43 +17,73 @@ def get_mount_path(server, share):
     safe_server = server.replace(".", "_")
     safe_share = share.replace("/", "_")
 
-    path = BASE_DIR / safe_server / safe_share
-    path.mkdir(parents=True, exist_ok=True)
+    base = get_default_mount_base()
 
-    return str(path)
+    return str(Path(base) / safe_server / safe_share)
 
 
-def mount_share(server, share, username=None, password=None, smb_version="3.0"):
+def _run_privileged_script(script_body):
+    """
+    Zapisuje skrypt do tymczasowego pliku i uruchamia go JEDNYM
+    wywolaniem pkexec - dzieki temu niezaleznie od tego, ile krokow
+    wymaga uprawnien roota (mkdir, mount, zapis fstab), uzytkownik
+    jest pytany o haslo administratora tylko raz.
+    """
+    script = "#!/bin/bash\nset -e\n" + script_body
+
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as f:
+        f.write(script)
+        script_path = f.name
+
+    os.chmod(script_path, 0o700)
+
+    try:
+        result = subprocess.run(
+            ["pkexec", "bash", script_path],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        try:
+            os.remove(script_path)
+        except Exception:
+            pass
+
+    return result
+
+
+def mount_share(server, share, username=None, password=None,
+                 smb_version="3.0", persist=False):
     target = get_mount_path(server, share)
 
-    opts = [
-        f"vers={smb_version}",
-        f"uid={os.getuid()}",
-        f"gid={os.getgid()}",
-    ]
+    uid = os.getuid()
+    gid = os.getgid()
 
-    if username:
-        opts.append(f"username={username}")
-        if password:
-            opts.append(f"password={password}")
+    script = f'mkdir -p "{target}"\n'
+
+    if persist:
+        # trwaly wpis w /etc/fstab (przetrwa restart) + dane logowania
+        # w osobnym pliku w /etc, potem montujemy przez fstab
+        script += build_persist_fragment(
+            server, share, target, uid, gid, username, password, smb_version
+        )
+        script += f'mount "{target}"\n'
     else:
-        # Brak podanych danych logowania -> montuj jako gość.
-        # Bez tego mount.cifs próbuje interaktywnie pytać o hasło
-        # na terminalu, z którego odpalona jest aplikacja (blokujące i mylące).
-        opts.append("guest")
+        # zwykly, tymczasowy mount na czas tej sesji
+        opts = [f"vers={smb_version}", f"uid={uid}", f"gid={gid}"]
 
-    cmd = [
-        "pkexec",
-        "mount",
-        "-t",
-        "cifs",
-        f"//{server}/{share}",
-        target,
-        "-o",
-        ",".join(opts),
-    ]
+        if username:
+            opts.append(f"username={username}")
+            if password:
+                opts.append(f"password={password}")
+        else:
+            opts.append("guest")
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+        script += (
+            f'mount -t cifs "//{server}/{share}" "{target}" -o {",".join(opts)}\n'
+        )
+
+    result = _run_privileged_script(script)
 
     return {
         "success": result.returncode == 0,
@@ -67,7 +93,7 @@ def mount_share(server, share, username=None, password=None, smb_version="3.0"):
     }
 
 
-def unmount_share(path):
+def unmount_share(path, remove_fstab=False):
     if not isinstance(path, str):
         return {
             "success": False,
@@ -75,11 +101,15 @@ def unmount_share(path):
             "stderr": f"Invalid path type: {type(path)}",
         }
 
-    result = subprocess.run(
-        ["pkexec", "umount", path],
-        capture_output=True,
-        text=True,
-    )
+    if remove_fstab:
+        script = f'umount "{path}"\n' + remove_fstab_line(path)
+        result = _run_privileged_script(script)
+    else:
+        result = subprocess.run(
+            ["pkexec", "umount", path],
+            capture_output=True,
+            text=True,
+        )
 
     return {
         "success": result.returncode == 0,
@@ -128,12 +158,11 @@ def list_mounts():
 
 
 def cleanup_unused_dirs():
-    ensure_base_dir()
-
+    base = Path(get_default_mount_base())
     active = {m["target"] for m in detect_mounts()}
 
-    for root, dirs, files in os.walk(BASE_DIR, topdown=False):
-        if str(root) == str(BASE_DIR):
+    for root, dirs, files in os.walk(base, topdown=False):
+        if str(root) == str(base):
             continue
 
         if str(root) not in active:
