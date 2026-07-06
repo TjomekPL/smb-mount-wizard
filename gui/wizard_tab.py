@@ -148,7 +148,7 @@ class WizardTab(QWidget):
             lay.setContentsMargins(0, 0, 0, 0)
             lay.addWidget(btn)
 
-            def on_mount(h=host, s=share):
+            def on_mount(_checked=False, h=host, s=share):
 
                 # twarda ochrona przed śmieciami z Qt
                 if not isinstance(h, str) or not isinstance(s, str):
@@ -165,6 +165,24 @@ class WizardTab(QWidget):
                     result = mount_share(h, s, *creds_local)
                 else:
                     result = mount_share(h, s)
+
+                # Jeśli mount się nie udał z powodu braku uprawnień,
+                # poproś o login zamiast dawać się zablokować na terminalu
+                stderr = (result.get("stderr") or "").lower()
+                needs_auth = (
+                    not result.get("success")
+                    and not creds_local
+                    and ("permission denied" in stderr or "error(13)" in stderr)
+                )
+
+                if needs_auth:
+                    dialog = AuthDialog(h)
+
+                    if dialog.exec():
+                        username, password = dialog.get_credentials()
+
+                        self.auth_cache[h] = (username, password)
+                        result = mount_share(h, s, username, password)
 
                 if result.get("success"):
                     QMessageBox.information(

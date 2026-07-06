@@ -1,7 +1,27 @@
+import socket
 import subprocess
 import concurrent.futures
 import ipaddress
 from core.runtime import run
+
+
+def get_local_subnet():
+    """
+    Wykrywa prefiks /24 aktualnej sieci lokalnej na podstawie adresu IP,
+    którego system użyłby do routingu w stronę internetu.
+    Nie wysyła żadnych realnych pakietów (UDP connect() tylko ustala
+    lokalny adres źródłowy na podstawie tablicy routingu).
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = "127.0.0.1"
+    finally:
+        s.close()
+
+    return ".".join(local_ip.split(".")[:3])
 
 
 def has_smb(ip):
@@ -16,7 +36,11 @@ def has_smb(ip):
     except Exception:
         return False
 
-def scan_smb_hosts(ip_range="192.168.0"):
+
+def scan_smb_hosts(ip_range=None):
+    if ip_range is None:
+        ip_range = get_local_subnet()
+
     hosts = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:

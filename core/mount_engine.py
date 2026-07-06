@@ -38,8 +38,13 @@ def mount_share(server, share, username=None, password=None, smb_version="3.0"):
 
     if username:
         opts.append(f"username={username}")
-    if password:
-        opts.append(f"password={password}")
+        if password:
+            opts.append(f"password={password}")
+    else:
+        # Brak podanych danych logowania -> montuj jako gość.
+        # Bez tego mount.cifs próbuje interaktywnie pytać o hasło
+        # na terminalu, z którego odpalona jest aplikacja (blokujące i mylące).
+        opts.append("guest")
 
     cmd = [
         "pkexec",
