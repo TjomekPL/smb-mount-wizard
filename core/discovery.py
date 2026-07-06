@@ -6,12 +6,15 @@ from core.runtime import run
 
 def has_smb(ip):
     try:
+        ip = str(ip)  # FIX: zawsze string
+
         p = run(["nmap", "-p", "445", ip])
         stdout, _ = p.communicate(timeout=2)
+
         return "445/tcp open" in stdout
+
     except Exception:
         return False
-
 
 def scan_smb_hosts(ip_range="192.168.0"):
     hosts = []
