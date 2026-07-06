@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QTreeWidget,
     QTreeWidgetItem,
-    QFrame
+    QFrame,
+    QMessageBox
 )
 
 from core.discovery import scan_smb_hosts, get_smb_shares
@@ -44,9 +45,12 @@ class WizardTab(QWidget):
         top.addWidget(self.add_btn)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(
-            ["SMB Hosts / Shares"]
-        )
+        self.tree.setColumnCount(2)
+
+        self.tree.setHeaderLabels([
+            "SMB Hosts / Shares",
+            ""
+        ])
 
         self.tree.itemExpanded.connect(
             self.load_shares
@@ -88,6 +92,7 @@ class WizardTab(QWidget):
         hosts = []
 
         try:
+
             hosts.extend(
                 get_servers()
             )
@@ -107,7 +112,9 @@ class WizardTab(QWidget):
 
         for host in hosts:
 
-            item = QTreeWidgetItem([host])
+            item = QTreeWidgetItem(
+                [host]
+            )
 
             item.addChild(
 
@@ -282,7 +289,7 @@ class WizardTab(QWidget):
 
                 if creds_local:
 
-                    mount_share(
+                    result = mount_share(
 
                         h,
 
@@ -294,11 +301,35 @@ class WizardTab(QWidget):
 
                 else:
 
-                    mount_share(
+                    result = mount_share(
 
                         h,
 
                         s
+
+                    )
+
+                if result["success"]:
+
+                    QMessageBox.information(
+
+                        self,
+
+                        "Mounted",
+
+                        f"Mounted:\n\n{result['mountpoint']}"
+
+                    )
+
+                else:
+
+                    QMessageBox.critical(
+
+                        self,
+
+                        "Mount failed",
+
+                        result["stderr"]
 
                     )
 

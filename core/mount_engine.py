@@ -43,7 +43,7 @@ def mount_share(
         share
     )
 
-    options = [
+    opts = [
 
         f"vers={smb_version}",
 
@@ -53,17 +53,15 @@ def mount_share(
 
     ]
 
-    if username is not None:
-
-        options.append(
+    if username:
+        opts.append(
 
             f"username={username}"
 
         )
 
-    if password is not None:
-
-        options.append(
+    if password:
+        opts.append(
 
             f"password={password}"
 
@@ -85,7 +83,7 @@ def mount_share(
 
         "-o",
 
-        ",".join(options)
+        ",".join(opts)
 
     ]
 
@@ -101,18 +99,26 @@ def mount_share(
 
     return {
 
-        "success": result.returncode == 0,
+        "success":
 
-        "stdout": result.stdout,
+            result.returncode == 0,
 
-        "stderr": result.stderr,
+        "stdout":
 
-        "mountpoint": target
+            result.stdout,
+
+        "stderr":
+
+            result.stderr,
+
+        "mountpoint":
+
+            target
 
     }
 
 
-def unmount(path):
+def unmount_share(path):
 
     result = subprocess.run(
 
@@ -134,37 +140,19 @@ def unmount(path):
 
     return {
 
-        "success": result.returncode == 0,
+        "success":
 
-        "stdout": result.stdout,
+            result.returncode == 0,
 
-        "stderr": result.stderr
+        "stdout":
+
+            result.stdout,
+
+        "stderr":
+
+            result.stderr
 
     }
-
-
-def unmount_share(path):
-
-    return unmount(path)
-
-
-def is_mounted(path):
-
-    try:
-
-        mounts = subprocess.check_output(
-
-            ["mount"],
-
-            text=True
-
-        )
-
-        return path in mounts
-
-    except Exception:
-
-        return False
 
 
 def detect_mounts():
@@ -184,7 +172,6 @@ def detect_mounts():
         for line in output.splitlines():
 
             if " type cifs " not in line:
-
                 continue
 
             parts = line.split()
@@ -193,9 +180,13 @@ def detect_mounts():
 
                 {
 
-                    "source": parts[0],
+                    "source":
 
-                    "target": parts[2]
+                        parts[0],
+
+                    "target":
+
+                        parts[2]
 
                 }
 
@@ -223,11 +214,6 @@ def list_mounts():
     return detect_mounts()
 
 
-def test_mount():
-
-    return detect_mounts()
-
-
 def cleanup_unused_dirs():
 
     ensure_base_dir()
@@ -249,7 +235,6 @@ def cleanup_unused_dirs():
     ):
 
         if root == str(BASE_DIR):
-
             continue
 
         if root not in active:
