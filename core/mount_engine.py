@@ -8,7 +8,6 @@ from core.fstab import build_persist_fragment, remove_fstab_line
 
 
 def get_mount_path(server, share):
-    # zabezpieczenie przed "False", None itd.
     if not isinstance(server, str):
         raise ValueError(f"Invalid server: {server}")
     if not isinstance(share, str):
@@ -20,6 +19,19 @@ def get_mount_path(server, share):
     base = get_default_mount_base()
 
     return str(Path(base) / safe_server / safe_share)
+
+
+class _FailedResult:
+    """
+    Minimal stand-in for subprocess.CompletedProcess, used when the
+    command itself can't even be launched (e.g. pkexec missing) so
+    calling code can keep reading .returncode/.stdout/.stderr the
+    same way regardless of what went wrong.
+    """
+    def __init__(self, message):
+        self.returncode = 1
+        self.stdout = ""
+        self.stderr = message
 
 
 def _run_privileged_script(script_body):
@@ -43,6 +55,12 @@ def _run_privileged_script(script_body):
             capture_output=True,
             text=True,
         )
+    except FileNotFoundError:
+        result = _FailedResult(
+            "pkexec not found - install policykit-1 (see Diagnostics tab)"
+        )
+    except Exception as e:
+        result = _FailedResult(str(e))
     finally:
         try:
             os.remove(script_path)
@@ -62,14 +80,11 @@ def mount_share(server, share, username=None, password=None,
     script = f'mkdir -p "{target}"\n'
 
     if persist:
-        # trwaly wpis w /etc/fstab (przetrwa restart) + dane logowania
-        # w osobnym pliku w /etc, potem montujemy przez fstab
         script += build_persist_fragment(
             server, share, target, uid, gid, username, password, smb_version
         )
         script += f'mount "{target}"\n'
     else:
-        # zwykly, tymczasowy mount na czas tej sesji
         opts = [f"vers={smb_version}", f"uid={uid}", f"gid={gid}"]
 
         if username:
@@ -105,11 +120,18 @@ def unmount_share(path, remove_fstab=False):
         script = f'umount "{path}"\n' + remove_fstab_line(path)
         result = _run_privileged_script(script)
     else:
-        result = subprocess.run(
-            ["pkexec", "umount", path],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["pkexec", "umount", path],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            result = _FailedResult(
+                "pkexec not found - install policykit-1 (see Diagnostics tab)"
+            )
+        except Exception as e:
+            result = _FailedResult(str(e))
 
     return {
         "success": result.returncode == 0,

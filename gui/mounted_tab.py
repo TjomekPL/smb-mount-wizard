@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer
 
 from core.mount_engine import get_real_mounts, unmount_share
+from core.i18n import tr
 
 
 class MountedTab(QWidget):
@@ -22,22 +23,22 @@ class MountedTab(QWidget):
         layout = QVBoxLayout()
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Source", "Mountpoint"])
+        self.tree.setHeaderLabels([
+            tr("mounted.header_source"),
+            tr("mounted.header_target"),
+        ])
 
         layout.addWidget(self.tree)
 
         btns = QHBoxLayout()
 
-        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn = QPushButton(tr("mounted.refresh_button"))
         self.refresh_btn.clicked.connect(self.load_mounts)
 
-        self.remove_fstab_checkbox = QCheckBox("Usuń też trwały wpis (fstab)")
-        self.remove_fstab_checkbox.setToolTip(
-            "Zaznacz, jeśli ten udział był zamontowany opcją 'Na stałe' "
-            "i chcesz, żeby przestał się montować po restarcie."
-        )
+        self.remove_fstab_checkbox = QCheckBox(tr("mounted.remove_fstab_checkbox"))
+        self.remove_fstab_checkbox.setToolTip(tr("mounted.remove_fstab_tooltip"))
 
-        self.unmount_btn = QPushButton("Unmount selected")
+        self.unmount_btn = QPushButton(tr("mounted.unmount_button"))
         self.unmount_btn.clicked.connect(self.unmount_selected)
 
         btns.addWidget(self.refresh_btn)
@@ -81,7 +82,7 @@ class MountedTab(QWidget):
         try:
             res = unmount_share(path, remove_fstab=remove_fstab)
         except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+            QMessageBox.critical(self, tr("mounted.error_title"), str(e))
             return
 
         if isinstance(res, dict):
@@ -92,6 +93,10 @@ class MountedTab(QWidget):
             err = ""
 
         if not ok:
-            QMessageBox.critical(self, "Unmount failed", err or "Unknown error")
+            QMessageBox.critical(
+                self,
+                tr("mounted.unmount_failed_title"),
+                err or tr("mounted.unknown_error")
+            )
 
         self.load_mounts()

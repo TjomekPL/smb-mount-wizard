@@ -11,10 +11,24 @@ from PyQt6.QtWidgets import (
     QMessageBox
 )
 
-from core.discovery import scan_smb_hosts, get_smb_shares, share_accessible_as_guest
+from core.discovery import (
+    scan_smb_hosts,
+    get_smb_shares,
+    share_accessible_as_guest,
+    SENTINEL_LOGIN_REQUIRED,
+    SENTINEL_UNAVAILABLE,
+    SENTINEL_NO_SHARES,
+)
 from core.auth import AuthDialog
 from core.mount_engine import mount_share, get_real_mounts
 from core.manual_servers import get_servers, add_server, remove_server
+from core.i18n import tr
+
+SENTINEL_DISPLAY_KEYS = {
+    SENTINEL_LOGIN_REQUIRED: "wizard.login_required",
+    SENTINEL_UNAVAILABLE: "wizard.unavailable",
+    SENTINEL_NO_SHARES: "wizard.no_shares",
+}
 
 
 class WizardTab(QWidget):
@@ -28,13 +42,13 @@ class WizardTab(QWidget):
 
         top = QHBoxLayout()
 
-        self.scan_btn = QPushButton("Scan network")
+        self.scan_btn = QPushButton(tr("wizard.scan_button"))
         self.scan_btn.clicked.connect(self.scan)
 
         self.host_input = QLineEdit()
-        self.host_input.setPlaceholderText("adres IP lub nazwa hosta (np. nas.local)")
+        self.host_input.setPlaceholderText(tr("wizard.host_placeholder"))
 
-        self.add_btn = QPushButton("Add server")
+        self.add_btn = QPushButton(tr("wizard.add_button"))
         self.add_btn.clicked.connect(self.add_manual_server)
 
         top.addWidget(self.scan_btn)
@@ -43,9 +57,8 @@ class WizardTab(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(["SMB Hosts / Shares", ""])
+        self.tree.setHeaderLabels([tr("wizard.tree_header"), ""])
 
-        # stała szerokość pierwszej kolumny (żeby IP nie ucinało się przy starcie)
         self.tree.setColumnWidth(0, 350)
 
         self.tree.itemExpanded.connect(self.load_shares)
@@ -61,12 +74,12 @@ class WizardTab(QWidget):
         host = str(host) if host is not None else ""
 
         item = QTreeWidgetItem([host])
-        item.addChild(QTreeWidgetItem(["Loading..."]))
+        item.addChild(QTreeWidgetItem([tr("wizard.loading")]))
         self.tree.addTopLevelItem(item)
 
         remove_btn = QPushButton("\u2715")
         remove_btn.setFixedSize(22, 22)
-        remove_btn.setToolTip("Remove this server from the list")
+        remove_btn.setToolTip(tr("wizard.remove_tooltip"))
 
         def on_remove(_checked=False, h=host, item=item):
             remove_server(h)
@@ -77,8 +90,6 @@ class WizardTab(QWidget):
 
         remove_btn.clicked.connect(on_remove)
 
-        # wrapper widget, żeby przycisk był przyklejony do prawej
-        # krawędzi kolumny zamiast rozciągać się na całą jej szerokość
         remove_container = QFrame()
         remove_lay = QHBoxLayout(remove_container)
         remove_lay.setContentsMargins(0, 0, 4, 0)
@@ -100,10 +111,17 @@ class WizardTab(QWidget):
 
     def scan(self):
         hosts = []
+        warning = None
 
         try:
             hosts.extend(get_servers())
+        except Exception:
+            pass
+
+        try:
             hosts.extend(scan_smb_hosts())
+        except RuntimeError as e:
+            warning = str(e)
         except Exception:
             pass
 
@@ -113,6 +131,9 @@ class WizardTab(QWidget):
 
         for host in hosts:
             self.add_host_row(host)
+
+        if warning:
+            QMessageBox.warning(self, tr("wizard.scan_warning_title"), warning)
 
     def add_manual_server(self):
         host = self.host_input.text().strip()
@@ -146,9 +167,9 @@ class WizardTab(QWidget):
             else:
                 shares = get_smb_shares(host)
         except Exception:
-            shares = ["Unavailable"]
+            shares = [SENTINEL_UNAVAILABLE]
 
-        if shares == ["Login required"]:
+        if shares == [SENTINEL_LOGIN_REQUIRED]:
             dialog = AuthDialog(host)
 
             if dialog.exec():
@@ -165,22 +186,21 @@ class WizardTab(QWidget):
         for share in shares:
             share = str(share)
 
-            child = QTreeWidgetItem([share])
+            display_text = tr(SENTINEL_DISPLAY_KEYS[share]) if share in SENTINEL_DISPLAY_KEYS else share
+
+            child = QTreeWidgetItem([display_text])
             item.addChild(child)
 
-            if share in ["Login required", "Unavailable", "No shares"]:
+            if share in SENTINEL_DISPLAY_KEYS:
                 continue
 
             is_mounted = f"//{host}/{share}".lower() in active_sources
 
-            btn = QPushButton("Mounted" if is_mounted else "Mount")
+            btn = QPushButton(tr("wizard.mounted_button") if is_mounted else tr("wizard.mount_button"))
             btn.setEnabled(not is_mounted)
 
-            persist_checkbox = QCheckBox("Na stałe")
-            persist_checkbox.setToolTip(
-                "Dodaje trwały wpis w /etc/fstab - udział zamontuje się "
-                "sam po restarcie systemu."
-            )
+            persist_checkbox = QCheckBox(tr("wizard.persist_checkbox"))
+            persist_checkbox.setToolTip(tr("wizard.persist_tooltip"))
             persist_checkbox.setEnabled(not is_mounted)
 
             container = QFrame()
@@ -191,26 +211,22 @@ class WizardTab(QWidget):
 
             def on_mount(_checked=False, h=host, s=share, btn=btn, persist_cb=persist_checkbox):
 
-                # twarda ochrona przed śmieciami z Qt
                 if not isinstance(h, str) or not isinstance(s, str):
                     QMessageBox.critical(
                         self,
-                        "Invalid data",
-                        f"Bad mount args:\n{h}\n{s}"
+                        tr("wizard.invalid_data_title"),
+                        tr("wizard.invalid_data_message", h=h, s=s)
                     )
                     return
 
                 creds_local = self.auth_cache.get(h)
                 persist = persist_cb.isChecked()
 
-                # Sprawdzamy PRZED wywołaniem pkexec, czy w ogóle trzeba się
-                # logować - dzięki temu pkexec (hasło do konta) woła się
-                # tylko raz, zamiast dwa razy (próba-gościa + próba z danymi).
                 if not creds_local and not share_accessible_as_guest(h, s):
                     dialog = AuthDialog(h)
 
                     if not dialog.exec():
-                        return  # użytkownik anulował logowanie
+                        return
 
                     username, password = dialog.get_credentials()
                     creds_local = (username, password)
@@ -221,8 +237,6 @@ class WizardTab(QWidget):
                 else:
                     result = mount_share(h, s, persist=persist)
 
-                # Fallback na wszelki wypadek: gdyby próba gościa mimo
-                # wszystko wywaliła się permission-denied.
                 stderr = (result.get("stderr") or "").lower()
                 needs_auth = (
                     not result.get("success")
@@ -240,20 +254,20 @@ class WizardTab(QWidget):
                         result = mount_share(h, s, username, password, persist=persist)
 
                 if result.get("success"):
-                    btn.setText("Mounted")
+                    btn.setText(tr("wizard.mounted_button"))
                     btn.setEnabled(False)
                     persist_cb.setEnabled(False)
 
                     QMessageBox.information(
                         self,
-                        "Mounted",
-                        f"Mounted:\n\n{result.get('mountpoint')}"
+                        tr("wizard.mounted_title"),
+                        tr("wizard.mounted_message", path=result.get("mountpoint"))
                     )
                 else:
                     QMessageBox.critical(
                         self,
-                        "Mount failed",
-                        result.get("stderr", "Unknown error")
+                        tr("wizard.mount_failed_title"),
+                        result.get("stderr") or tr("wizard.unknown_error")
                     )
 
             btn.clicked.connect(on_mount)

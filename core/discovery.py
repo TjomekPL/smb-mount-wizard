@@ -1,16 +1,25 @@
-import socket
+import shutil
 import subprocess
 import concurrent.futures
 import ipaddress
+import socket
 from core.runtime import run
+
+# Internal control-flow sentinels (NOT user-facing text - the GUI layer
+# maps these to translated strings via core.i18n.tr()). Keep these as
+# plain English constants so equality checks in the GUI stay stable
+# regardless of the selected display language.
+SENTINEL_LOGIN_REQUIRED = "Login required"
+SENTINEL_UNAVAILABLE = "Unavailable"
+SENTINEL_NO_SHARES = "No shares"
 
 
 def get_local_subnet():
     """
-    Wykrywa prefiks /24 aktualnej sieci lokalnej na podstawie adresu IP,
-    którego system użyłby do routingu w stronę internetu.
-    Nie wysyła żadnych realnych pakietów (UDP connect() tylko ustala
-    lokalny adres źródłowy na podstawie tablicy routingu).
+    Detects the /24 prefix of the current local network, based on the
+    IP address the system would use to route towards the internet.
+    Does not send any real packets (the UDP connect() call only makes
+    the kernel resolve a local source address via the routing table).
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -26,7 +35,7 @@ def get_local_subnet():
 
 def has_smb(ip):
     try:
-        ip = str(ip)  # FIX: zawsze string
+        ip = str(ip)  # always a string
 
         p = run(["nmap", "-p", "445", ip])
         stdout, _ = p.communicate(timeout=2)
@@ -38,6 +47,11 @@ def has_smb(ip):
 
 
 def scan_smb_hosts(ip_range=None):
+    if shutil.which("nmap") is None:
+        raise RuntimeError(
+            "nmap not found - install it from the Diagnostics tab"
+        )
+
     if ip_range is None:
         ip_range = get_local_subnet()
 
@@ -67,11 +81,10 @@ def scan_smb_hosts(ip_range=None):
 
 def share_accessible_as_guest(host, share):
     """
-    Sprawdza (bez roota, bez pkexec) czy dany udział da się odczytać
-    anonimowo. Używane, żeby ustalić PRZED wywołaniem 'pkexec mount'
-    czy w ogóle trzeba pytać o dane logowania - dzięki temu unikamy
-    podwójnego pytania o hasło do konta (raz na próbę-gościa,
-    drugi raz na próbę z danymi).
+    Checks (without root, without pkexec) whether a share can be read
+    anonymously. Used to decide BEFORE calling 'pkexec mount' whether
+    login is needed at all - this avoids asking for the account
+    password twice (once for a guest attempt, once for the real one).
     """
     try:
         result = subprocess.run(
@@ -97,7 +110,7 @@ def get_smb_shares(host, username=None, password=None):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
         if result.returncode != 0:
-            return ["Login required"]
+            return [SENTINEL_LOGIN_REQUIRED]
 
         shares = []
 
@@ -106,7 +119,7 @@ def get_smb_shares(host, username=None, password=None):
             if len(parts) >= 2 and parts[1] == "Disk":
                 shares.append(parts[0])
 
-        return shares if shares else ["No shares"]
+        return shares if shares else [SENTINEL_NO_SHARES]
 
     except Exception:
-        return ["Unavailable"]
+        return [SENTINEL_UNAVAILABLE]
