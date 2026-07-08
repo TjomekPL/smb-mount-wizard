@@ -11,17 +11,6 @@ def _credentials_filename(server, share):
 
 def build_persist_fragment(server, share, mountpoint, uid, gid,
                             username=None, password=None, smb_version="3.0"):
-    """
-    Buduje fragment skryptu powloki (wykonywany jako root przez pkexec),
-    ktory:
-      - zapisuje dane logowania do pliku w /etc (root:root, chmod 600)
-        zamiast trzymac je jawnie w /etc/fstab (ktory kazdy moze odczytac)
-      - dopisuje wpis do /etc/fstab, jesli jeszcze go tam nie ma
-
-    Nie wykonuje samego mountowania - to robi mount_engine.mount_share,
-    laczac ten fragment z komenda 'mount' w JEDNYM wywolaniu pkexec,
-    zeby nie mnozyc pytan o haslo administratora.
-    """
     cred_lines = []
     if username:
         cred_lines.append(f"username={username}")
@@ -40,8 +29,12 @@ def build_persist_fragment(server, share, mountpoint, uid, gid,
         f"vers={smb_version}",
         f"uid={uid}",
         f"gid={gid}",
+        "file_mode=0600",
+        "dir_mode=0700",
+        "soft",
         "_netdev",
         "x-systemd.automount",
+        "x-systemd.mount-timeout=10",
         "nofail",
     ])
 
@@ -57,11 +50,6 @@ def build_persist_fragment(server, share, mountpoint, uid, gid,
 
 
 def remove_fstab_line(mountpoint):
-    """
-    Zwraca fragment skryptu usuwajacy wpis fstab dla danego mountpointu
-    (dopasowanie po sciezce docelowej). Plik credentials celowo zostaje
-    na dysku - jest nieszkodliwy bez odpowiadajacego mu wpisu w fstab.
-    """
     return (
         f'grep -v " {mountpoint} cifs " /etc/fstab > /etc/fstab.tmp '
         f"&& mv /etc/fstab.tmp /etc/fstab\n"

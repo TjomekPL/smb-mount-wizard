@@ -1,6 +1,7 @@
 import shutil
 import subprocess
-import concurrent.futures
+import os
+import tempfile
 import ipaddress
 import socket
 from core.runtime import run
@@ -33,15 +34,16 @@ def get_local_subnet():
     return ".".join(local_ip.split(".")[:3])
 
 
-def has_smb(ip):
+def is_port_open(host, port=445, timeout=2):
+    """
+    Quick, bounded reachability check - used right before mounting to
+    fail fast with a clear message instead of letting `mount` itself
+    block the whole app for a long OS-level TCP timeout (which can be
+    tens of seconds to minutes) when the server is simply offline.
+    """
     try:
-        ip = str(ip)  # always a string
-
-        p = run(["nmap", "-p", "445", ip])
-        stdout, _ = p.communicate(timeout=2)
-
-        return "445/tcp open" in stdout
-
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
     except Exception:
         return False
 
@@ -55,21 +57,34 @@ def scan_smb_hosts(ip_range=None):
     if ip_range is None:
         ip_range = get_local_subnet()
 
+    cidr = f"{ip_range}.0/24"
+
     hosts = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:
-        futures = {
-            ex.submit(has_smb, f"{ip_range}.{i}"): i
-            for i in range(1, 255)
-        }
+    try:
+        # One nmap process scanning the whole /24 range for the SMB
+        # port, instead of spawning a separate nmap process per host
+        # (254 processes) - nmap already parallelizes this internally,
+        # so a single invocation is both faster and much lighter on
+        # the system.
+        p = run(["nmap", "-p", "445", "--open", "-oG", "-", cidr])
+        stdout, _ = p.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        try:
+            p.kill()
+        except Exception:
+            pass
+        return hosts
+    except Exception:
+        return hosts
 
-        for f in concurrent.futures.as_completed(futures):
-            ip = f"{ip_range}.{futures[f]}"
-            try:
-                if f.result():
-                    hosts.append(ip)
-            except Exception:
-                pass
+    for line in stdout.splitlines():
+        if not line.startswith("Host:") or "445/open" not in line:
+            continue
+
+        parts = line.split()
+        if len(parts) >= 2:
+            hosts.append(parts[1])
 
     try:
         hosts.sort(key=lambda x: ipaddress.ip_address(x))
@@ -99,14 +114,31 @@ def share_accessible_as_guest(host, share):
 
 
 def get_smb_shares(host, username=None, password=None):
-    cmd = ["smbclient", "-L", host]
-
-    if username:
-        cmd += ["-U", f"{username}%{password}"]
-    else:
-        cmd += ["-N"]
+    auth_file = None
 
     try:
+        cmd = ["smbclient", "-L", host]
+
+        if username:
+            # Use an auth file instead of '-U user%pass': smbclient
+            # treats '%' as the user/password separator in -U, so a
+            # password containing a literal '%' would be mangled.
+            # An auth file also avoids the credentials showing up in
+            # plain text via `ps aux` / /proc/<pid>/cmdline while
+            # smbclient is running.
+            auth_content = f"username={username}\npassword={password or ''}\n"
+
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".authfile", delete=False
+            ) as f:
+                f.write(auth_content)
+                auth_file = f.name
+
+            os.chmod(auth_file, 0o600)
+            cmd += ["-A", auth_file]
+        else:
+            cmd += ["-N"]
+
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
         if result.returncode != 0:
@@ -123,3 +155,10 @@ def get_smb_shares(host, username=None, password=None):
 
     except Exception:
         return [SENTINEL_UNAVAILABLE]
+
+    finally:
+        if auth_file:
+            try:
+                os.remove(auth_file)
+            except Exception:
+                pass

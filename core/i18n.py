@@ -32,6 +32,7 @@ TRANSLATIONS = {
         "wizard.mounted_message": "Mounted:\n\n{path}",
         "wizard.mount_failed_title": "Mount failed",
         "wizard.unknown_error": "Unknown error",
+        "wizard.host_unreachable": "Server {host} is not reachable right now (port 445 did not respond).",
 
         "mounted.header_source": "Source",
         "mounted.header_target": "Mountpoint",
@@ -78,11 +79,15 @@ TRANSLATIONS = {
         "diagnostics.purpose.smbclient": "Listing SMB shares on a host",
         "diagnostics.purpose.cifs_utils": "Mounting SMB shares",
         "diagnostics.purpose.pkexec": "Privilege escalation for mount / fstab writes",
+        "diagnostics.purpose.secret_tool": "Remembering SMB credentials between sessions (KWallet / Secret Service)",
+        "diagnostics.optional_title": "Optional",
+        "diagnostics.install_optional_button": "Install optional",
 
         "auth.title": "SMB Login - {host}",
         "auth.username_placeholder": "Username",
         "auth.password_placeholder": "Password",
         "auth.login_button": "Login",
+        "auth.forget_button": "Forget saved credentials",
     },
     "pl": {
         "tab.discovery": "Wykrywanie",
@@ -113,6 +118,7 @@ TRANSLATIONS = {
         "wizard.mounted_message": "Zamontowano:\n\n{path}",
         "wizard.mount_failed_title": "Błąd montowania",
         "wizard.unknown_error": "Nieznany błąd",
+        "wizard.host_unreachable": "Serwer {host} jest teraz nieosiągalny (port 445 nie odpowiada).",
 
         "mounted.header_source": "Źródło",
         "mounted.header_target": "Punkt montowania",
@@ -159,11 +165,15 @@ TRANSLATIONS = {
         "diagnostics.purpose.smbclient": "Listowanie udziałów SMB na hoście",
         "diagnostics.purpose.cifs_utils": "Montowanie udziałów SMB",
         "diagnostics.purpose.pkexec": "Podniesienie uprawnień do montowania / zapisu fstab",
+        "diagnostics.purpose.secret_tool": "Zapamiętywanie danych logowania między sesjami (KWallet / Secret Service)",
+        "diagnostics.optional_title": "Opcjonalne",
+        "diagnostics.install_optional_button": "Zainstaluj opcjonalne",
 
         "auth.title": "Logowanie SMB - {host}",
         "auth.username_placeholder": "Nazwa użytkownika",
         "auth.password_placeholder": "Hasło",
         "auth.login_button": "Zaloguj",
+        "auth.forget_button": "Zapomnij zapisane dane",
     },
 }
 

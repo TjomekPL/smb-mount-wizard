@@ -6,6 +6,7 @@ CONFIG_FILE = CONFIG_DIR / "settings.json"
 
 DEFAULTS = {
     "mount_base": "/mnt",
+    "language": "en",
 }
 
 

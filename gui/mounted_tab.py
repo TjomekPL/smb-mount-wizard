@@ -22,14 +22,20 @@ class MountedTab(QWidget):
 
         layout = QVBoxLayout()
 
+        # ---------------- TREE ----------------
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([
             tr("mounted.header_source"),
             tr("mounted.header_target"),
         ])
 
+        # fixed width for the source column, so full //ip/share paths
+        # aren't clipped (same fix as the Discovery tab)
+        self.tree.setColumnWidth(0, 350)
+
         layout.addWidget(self.tree)
 
+        # ---------------- BUTTONS ----------------
         btns = QHBoxLayout()
 
         self.refresh_btn = QPushButton(tr("mounted.refresh_button"))
@@ -49,13 +55,16 @@ class MountedTab(QWidget):
 
         self.setLayout(layout)
 
+        # auto refresh every 3s
         self.timer = QTimer()
         self.timer.timeout.connect(self.load_mounts)
         self.timer.start(3000)
 
         self.load_mounts()
 
+    # ---------------- LOAD ----------------
     def load_mounts(self):
+
         self.tree.clear()
 
         try:
@@ -64,13 +73,17 @@ class MountedTab(QWidget):
             mounts = []
 
         for m in mounts:
+
             item = QTreeWidgetItem([
                 m.get("source", ""),
                 m.get("target", "")
             ])
+
             self.tree.addTopLevelItem(item)
 
+    # ---------------- UNMOUNT ----------------
     def unmount_selected(self):
+
         selected = self.tree.selectedItems()
 
         if not selected:
