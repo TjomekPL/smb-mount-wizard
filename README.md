@@ -25,37 +25,59 @@ digging through Dolphin's network browser every time.
 
 ## Installation
 
-1. Clone the repository:
+### 1. Clone the repository
+
+```bash
 git clone https://github.com/TjomekPL/smb-mount-wizard.git
 cd smb-mount-wizard
+```
 
-2. Install the required system packages (Debian):
+### 2. Install the required system packages (Debian)
+
+```bash
 sudo apt install python3-pip nmap smbclient cifs-utils policykit-1 libsecret-tools
-   `libsecret-tools` is optional - without it, credentials just aren't
-   remembered between sessions instead of the app failing. The app's
-   own **Diagnostics** tab can check for and install the rest of these
-   after you've got it running once.
+```
 
-3. Install the Python dependency:
+`libsecret-tools` is optional - without it, credentials just aren't
+remembered between sessions instead of the app failing. The app's own
+**Diagnostics** tab can check for and install the rest of these after
+you've got it running once.
+
+### 3. Install the Python dependency
+
+```bash
 pip install -r requirements.txt --break-system-packages
+```
 
-4. Run it:
+### 4. Run it
+
+```bash
 python3 main.py
+```
 
-5. *(Optional)* Add it to the KDE application menu, so you don't need
-   a terminal to launch it afterwards:
+### 5. *(Optional)* Add it to the KDE application menu
+
+So you don't need a terminal to launch it afterwards:
+
+```bash
 mkdir -p ~/.local/share/applications
 cp packaging/smb-mount-wizard.desktop ~/.local/share/applications/
 update-desktop-database ~/.local/share/applications
-   If you cloned the repo somewhere other than
-   `~/Desktop/smb-mount-wizard`, edit the `Exec=` and `Path=` lines in
-   `packaging/smb-mount-wizard.desktop` first to match your actual path.
+```
+
+If you cloned the repo somewhere other than
+`~/Desktop/smb-mount-wizard`, edit the `Exec=` and `Path=` lines in
+`packaging/smb-mount-wizard.desktop` first to match your actual path.
 
 ### Installing a specific release instead of the latest code
 
 To get a known, tagged version instead of whatever is newest on the
 `main` branch:
+
+```bash
 git clone --branch v0.8.1 https://github.com/TjomekPL/smb-mount-wizard.git
+```
+
 See the [Releases](https://github.com/TjomekPL/smb-mount-wizard/releases)
 page for the full list of tagged versions and what changed in each.
 
