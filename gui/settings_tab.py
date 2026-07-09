@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QVBoxLayout,
     QHBoxLayout,
+    QFrame,
     QMessageBox,
 )
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -19,6 +20,13 @@ from core.settings import (
 from core.i18n import tr, get_language, set_language, available_languages
 from core.version import __version__
 from core.update_check import get_latest_version_tag, is_newer
+
+
+def _separator():
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.HLine)
+    line.setFrameShadow(QFrame.Shadow.Sunken)
+    return line
 
 
 class _UpdateCheckThread(QThread):
@@ -43,6 +51,28 @@ class SettingsTab(QWidget):
 
         layout = QVBoxLayout()
 
+        # ---------------- version / updates (top, most visible) ----------------
+        version_row = QHBoxLayout()
+        version_row.addWidget(QLabel(tr("settings.version_label", version=__version__)))
+        version_row.addStretch()
+
+        layout.addLayout(version_row)
+
+        update_row = QHBoxLayout()
+
+        self.check_updates_btn = QPushButton(tr("settings.check_updates_button"))
+        self.check_updates_btn.clicked.connect(self.check_for_updates)
+
+        self.update_status_label = QLabel("")
+
+        update_row.addWidget(self.check_updates_btn)
+        update_row.addWidget(self.update_status_label)
+        update_row.addStretch()
+
+        layout.addLayout(update_row)
+
+        layout.addWidget(_separator())
+
         # ---------------- mount location ----------------
         layout.addWidget(QLabel(tr("settings.mount_location_label")))
 
@@ -60,6 +90,8 @@ class SettingsTab(QWidget):
         layout.addLayout(row)
 
         layout.addWidget(QLabel(tr("settings.note")))
+
+        layout.addWidget(_separator())
 
         # ---------------- language ----------------
         layout.addWidget(QLabel(tr("settings.language_label")))
@@ -81,6 +113,8 @@ class SettingsTab(QWidget):
 
         layout.addWidget(self.language_combo)
         layout.addWidget(QLabel(tr("settings.language_note")))
+
+        layout.addWidget(_separator())
 
         # ---------------- SMB protocol version ----------------
         layout.addWidget(QLabel(tr("settings.smb_version_label")))
@@ -106,22 +140,6 @@ class SettingsTab(QWidget):
         layout.addWidget(QLabel(tr("settings.smb_version_note")))
 
         layout.addStretch()
-
-        # ---------------- version / updates ----------------
-        layout.addWidget(QLabel(tr("settings.version_label", version=__version__)))
-
-        update_row = QHBoxLayout()
-
-        self.check_updates_btn = QPushButton(tr("settings.check_updates_button"))
-        self.check_updates_btn.clicked.connect(self.check_for_updates)
-
-        self.update_status_label = QLabel("")
-
-        update_row.addWidget(self.check_updates_btn)
-        update_row.addWidget(self.update_status_label)
-        update_row.addStretch()
-
-        layout.addLayout(update_row)
 
         self.setLayout(layout)
 

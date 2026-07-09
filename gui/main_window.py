@@ -1,5 +1,7 @@
 from PyQt6.QtWidgets import QMainWindow, QTabWidget
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import QTimer
+from pathlib import Path
 
 from gui.wizard_tab import WizardTab
 from gui.mounted_tab import MountedTab
@@ -7,6 +9,9 @@ from gui.settings_tab import SettingsTab
 from gui.diagnostics_tab import DiagnosticsTab
 from core.runtime import kill_all
 from core.i18n import tr
+from core.version import __version__
+
+ICON_PATH = Path(__file__).resolve().parent.parent / "resources" / "icon.svg"
 
 
 class MainWindow(QMainWindow):
@@ -14,7 +19,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("SMB Mount Wizard")
+        self.setWindowTitle(f"SMB Mount Wizard v{__version__}")
+
+        if ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(ICON_PATH)))
+
         self.resize(900, 700)
 
         self.tabs = QTabWidget()

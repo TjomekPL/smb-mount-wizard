@@ -59,6 +59,19 @@ TRANSLATIONS = {
         "settings.saved_message": "Default mount location: {path}",
         "settings.language_label": "Language",
         "settings.language_note": "Takes effect immediately.",
+        "settings.version_label": "Version {version}",
+        "settings.check_updates_button": "Check for updates",
+        "settings.checking_updates": "Checking...",
+        "settings.up_to_date": "You have the latest version.",
+        "settings.update_available": "A newer version is available: {version} (see GitHub).",
+        "settings.update_check_failed": "Could not check (offline, or the repo is private).",
+        "settings.smb_version_label": "SMB protocol version",
+        "settings.smb_version_note": (
+            "Auto (recommended) lets mount.cifs negotiate the best version "
+            "with the server. Force an older version only if a specific "
+            "NAS fails to connect otherwise."
+        ),
+        "settings.smb_version_auto": "Auto (recommended)",
 
         "diagnostics.title": "Required system tools",
         "diagnostics.header_tool": "Tool",
@@ -145,6 +158,19 @@ TRANSLATIONS = {
         "settings.saved_message": "Domyślna lokalizacja: {path}",
         "settings.language_label": "Język",
         "settings.language_note": "Działa natychmiast.",
+        "settings.version_label": "Wersja {version}",
+        "settings.check_updates_button": "Sprawdź aktualizacje",
+        "settings.checking_updates": "Sprawdzanie...",
+        "settings.up_to_date": "Masz najnowszą wersję.",
+        "settings.update_available": "Dostępna jest nowsza wersja: {version} (zobacz na GitHubie).",
+        "settings.update_check_failed": "Nie udało się sprawdzić (brak sieci albo repo jest prywatne).",
+        "settings.smb_version_label": "Wersja protokołu SMB",
+        "settings.smb_version_note": (
+            "Auto (zalecane) pozwala mount.cifs samemu wynegocjować najlepszą "
+            "wersję z serwerem. Wymuś starszą wersję tylko jeśli konkretny "
+            "NAS inaczej nie chce się połączyć."
+        ),
+        "settings.smb_version_auto": "Auto (zalecane)",
 
         "diagnostics.title": "Wymagane narzędzia systemowe",
         "diagnostics.header_tool": "Narzędzie",
