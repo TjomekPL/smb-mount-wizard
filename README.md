@@ -4,7 +4,6 @@ A small PyQt6 desktop app for Debian/KDE Plasma to discover and mount
 SMB/CIFS network shares, without editing `/etc/fstab` by hand or
 digging through Dolphin's network browser every time.
 
-
 ## Features
 
 - **Discovery** - scans the local subnet for SMB hosts (or add one
@@ -24,29 +23,41 @@ digging through Dolphin's network browser every time.
 - **Settings** - default mount location, SMB protocol version override,
   and a live-switchable EN/PL interface language.
 
+## Installation
 
-## Requirements
+1. Clone the repository:
+git clone https://github.com/TjomekPL/smb-mount-wizard.git
+cd smb-mount-wizard
 
-Python dependency (see `requirements.txt`):
+2. Install the required system packages (Debian):
+sudo apt install python3-pip nmap smbclient cifs-utils policykit-1 libsecret-tools
+   `libsecret-tools` is optional - without it, credentials just aren't
+   remembered between sessions instead of the app failing. The app's
+   own **Diagnostics** tab can check for and install the rest of these
+   after you've got it running once.
 
+3. Install the Python dependency:
 pip install -r requirements.txt --break-system-packages
 
-System packages (Debian):
-
-sudo apt install nmap smbclient cifs-utils policykit-1 libsecret-tools
-
-The app's own **Diagnostics** tab can check for and install these
-(except `libsecret-tools`, which is optional - without it, credentials
-just aren't remembered between sessions).
-
-
-## Running
-
+4. Run it:
 python3 main.py
 
-To launch it from the KDE application menu instead of a terminal, see
-`packaging/smb-mount-wizard.desktop`.
+5. *(Optional)* Add it to the KDE application menu, so you don't need
+   a terminal to launch it afterwards:
+mkdir -p ~/.local/share/applications
+cp packaging/smb-mount-wizard.desktop ~/.local/share/applications/
+update-desktop-database ~/.local/share/applications
+   If you cloned the repo somewhere other than
+   `~/Desktop/smb-mount-wizard`, edit the `Exec=` and `Path=` lines in
+   `packaging/smb-mount-wizard.desktop` first to match your actual path.
 
+### Installing a specific release instead of the latest code
+
+To get a known, tagged version instead of whatever is newest on the
+`main` branch:
+git clone --branch v0.8.1 https://github.com/TjomekPL/smb-mount-wizard.git
+See the [Releases](https://github.com/TjomekPL/smb-mount-wizard/releases)
+page for the full list of tagged versions and what changed in each.
 
 ## Notes
 
