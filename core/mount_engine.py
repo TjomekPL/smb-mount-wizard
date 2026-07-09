@@ -60,7 +60,7 @@ def _run_privileged_script(script_body):
 
 
 def mount_share(server, share, username=None, password=None,
-                 smb_version="3.0", persist=False):
+                 smb_version=None, persist=False):
     target = get_mount_path(server, share)
 
     uid = os.getuid()
@@ -78,12 +78,18 @@ def mount_share(server, share, username=None, password=None,
     else:
         # regular, session-only mount
         opts = [
-            f"vers={smb_version}",
             f"uid={uid}",
             f"gid={gid}",
             "file_mode=0600",
             "dir_mode=0700",
         ]
+
+        if smb_version:
+            # explicit override - otherwise omit 'vers=' entirely and
+            # let mount.cifs auto-negotiate the best protocol version
+            # with the server (needed for older NAS devices that don't
+            # support SMB 3.0)
+            opts.append(f"vers={smb_version}")
 
         if username:
             # Write credentials to a throwaway temp file instead of

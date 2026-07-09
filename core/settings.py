@@ -7,6 +7,10 @@ CONFIG_FILE = CONFIG_DIR / "settings.json"
 DEFAULTS = {
     "mount_base": "/mnt",
     "language": "en",
+    # empty string = let mount.cifs auto-negotiate the best protocol
+    # version with the server, instead of forcing one. Only set this
+    # if a specific (usually older) NAS doesn't negotiate correctly.
+    "smb_version": "",
 }
 
 
@@ -43,4 +47,14 @@ def get_default_mount_base():
 def set_default_mount_base(path):
     settings = get_settings()
     settings["mount_base"] = path
+    save_settings(settings)
+
+
+def get_smb_version_override():
+    return get_settings().get("smb_version", DEFAULTS["smb_version"])
+
+
+def set_smb_version_override(version):
+    settings = get_settings()
+    settings["smb_version"] = version or ""
     save_settings(settings)

@@ -24,6 +24,7 @@ from core.auth import AuthDialog
 from core.mount_engine import mount_share, get_real_mounts
 from core.manual_servers import get_servers, add_server, remove_server
 from core.i18n import tr
+from core.settings import get_smb_version_override
 from kde import kwallet
 
 SENTINEL_DISPLAY_KEYS = {
@@ -259,89 +260,3 @@ class WizardTab(QWidget):
                 mount_key = (h, s)
                 wallet_key = _wallet_key(h, s)
                 persist = persist_cb.isChecked()
-
-                # 1) already used this session?
-                creds_local = self.mount_auth_cache.get(mount_key)
-
-                # 2) saved from a previous session in the wallet?
-                if not creds_local:
-                    saved = kwallet.get_credentials(wallet_key)
-                    if saved:
-                        creds_local = saved
-
-                # 3) nothing cached/saved - check BEFORE calling pkexec
-                # whether login is needed at all, so pkexec (account
-                # password) gets invoked only once instead of twice
-                # (guest attempt + real one).
-                if not creds_local and not share_accessible_as_guest(h, s):
-                    dialog = AuthDialog(h)
-
-                    if not dialog.exec():
-                        btn.setEnabled(True)
-                        return  # user cancelled the login dialog
-
-                    username, password = dialog.get_credentials()
-                    creds_local = (username, password)
-                    # NOT saved to the wallet yet - only once the mount
-                    # below actually succeeds with these values.
-
-                if creds_local:
-                    result = mount_share(h, s, *creds_local, persist=persist)
-                else:
-                    result = mount_share(h, s, persist=persist)
-
-                # Auth retry: covers both "no creds at all yet" and
-                # "we had cached/saved creds, but they turned out to be
-                # wrong" (e.g. password changed on the server since).
-                stderr = (result.get("stderr") or "").lower()
-                needs_auth = (
-                    not result.get("success")
-                    and ("permission denied" in stderr or "error(13)" in stderr)
-                )
-
-                if needs_auth:
-                    prev_username, prev_password = creds_local if creds_local else ("", "")
-
-                    def forget(k=wallet_key, mk=mount_key):
-                        kwallet.forget_credentials(k)
-                        self.mount_auth_cache.pop(mk, None)
-
-                    dialog = AuthDialog(
-                        h,
-                        prefill_username=prev_username,
-                        prefill_password=prev_password,
-                        on_forget=forget,
-                    )
-
-                    if dialog.exec():
-                        username, password = dialog.get_credentials()
-                        creds_local = (username, password)
-                        result = mount_share(h, s, username, password, persist=persist)
-
-                if result.get("success"):
-                    btn.setText(tr("wizard.mounted_button"))
-                    btn.setEnabled(False)
-                    persist_cb.setEnabled(False)
-
-                    # Only remember credentials once they are CONFIRMED
-                    # to work - never persist an unverified attempt.
-                    if creds_local:
-                        self.mount_auth_cache[mount_key] = creds_local
-                        kwallet.save_credentials(wallet_key, *creds_local)
-
-                    QMessageBox.information(
-                        self,
-                        tr("wizard.mounted_title"),
-                        tr("wizard.mounted_message", path=result.get("mountpoint"))
-                    )
-                else:
-                    btn.setEnabled(True)
-                    QMessageBox.critical(
-                        self,
-                        tr("wizard.mount_failed_title"),
-                        result.get("stderr") or tr("wizard.unknown_error")
-                    )
-
-            btn.clicked.connect(on_mount)
-
-            self.tree.setItemWidget(child, 1, container)
