@@ -23,6 +23,16 @@ digging through Dolphin's network browser every time.
 - **Settings** - default mount location, SMB protocol version override,
   and a live-switchable EN/PL interface language.
 
+## Screenshots
+
+| Discovery | Mounted |
+|---|---|
+| ![Discovery tab](img/1.png) | ![Mounted tab](img/2.png) |
+
+| Settings | Diagnostics |
+|---|---|
+| ![Settings tab](img/3.png) | ![Diagnostics tab](img/4.png) |
+
 ## Installation
 
 ### 1. Clone the repository
