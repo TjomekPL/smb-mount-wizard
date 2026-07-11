@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.1]
+
+### Fixed
+- Mounted tab layout: the Mountpoint column now stretches to fill
+  available width (previously disabling column auto-stretch left a
+  dead empty area after the last column).
+- Disk usage bar restyled - rounded corners, neutral groove
+  background, right-aligned text - instead of the plain, blocky
+  default Qt look.
+
 ## [0.10.0]
 
 ### Added

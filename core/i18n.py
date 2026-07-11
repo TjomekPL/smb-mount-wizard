@@ -36,6 +36,8 @@ TRANSLATIONS = {
 
         "mounted.header_source": "Source",
         "mounted.header_target": "Mountpoint",
+        "mounted.header_usage": "Usage",
+        "mounted.usage_unknown": "N/A",
         "mounted.refresh_button": "Refresh",
         "mounted.remove_fstab_checkbox": "Also remove persistent entry (fstab)",
         "mounted.remove_fstab_tooltip": (
@@ -135,6 +137,8 @@ TRANSLATIONS = {
 
         "mounted.header_source": "Źródło",
         "mounted.header_target": "Punkt montowania",
+        "mounted.header_usage": "Zajętość",
+        "mounted.usage_unknown": "Brak danych",
         "mounted.refresh_button": "Odśwież",
         "mounted.remove_fstab_checkbox": "Usuń też trwały wpis (fstab)",
         "mounted.remove_fstab_tooltip": (

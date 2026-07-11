@@ -7,13 +7,23 @@ from PyQt6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QProgressBar,
+    QHeaderView,
     QMessageBox,
 )
 
-from PyQt6.QtCore import QTimer, QThread, pyqtSignal
+from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt
 
 from core.mount_engine import get_real_mounts, unmount_share, get_disk_usage, format_bytes
 from core.i18n import tr
+
+
+def _usage_color(percent):
+    if percent >= 90:
+        return "#e74c3c"  # red - almost full
+    elif percent >= 70:
+        return "#f39c2d"  # orange - getting full
+    else:
+        return "#2a8fd8"  # blue - plenty of room
 
 
 class _DiskUsageThread(QThread):
@@ -54,8 +64,17 @@ class MountedTab(QWidget):
             tr("mounted.header_usage"),
         ])
 
-        self.tree.setColumnWidth(0, 350)
-        self.tree.setColumnWidth(2, 160)
+        # Source and Usage get a sensible fixed-ish width (still
+        # user-resizable); Mountpoint absorbs whatever space is left,
+        # so there's no dead empty area after the last column.
+        header = self.tree.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+
+        self.tree.setColumnWidth(0, 300)
+        self.tree.setColumnWidth(2, 150)
 
         layout.addWidget(self.tree)
 
@@ -115,6 +134,8 @@ class MountedTab(QWidget):
 
             bar = QProgressBar()
             bar.setTextVisible(True)
+            bar.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            bar.setFixedHeight(20)
 
             usage = self._usage_cache.get(target)
 
@@ -122,7 +143,19 @@ class MountedTab(QWidget):
                 used, total = usage
                 percent = min(100, int(used / total * 100))
                 bar.setValue(percent)
-                bar.setFormat(f"{format_bytes(used)} / {format_bytes(total)}")
+                bar.setFormat(f"{format_bytes(used)} / {format_bytes(total)}  ")
+                bar.setStyleSheet(
+                    "QProgressBar {"
+                    "  border: 1px solid palette(mid);"
+                    "  border-radius: 8px;"
+                    "  background-color: palette(alternate-base);"
+                    "  padding: 1px;"
+                    "}"
+                    "QProgressBar::chunk {"
+                    f"  background-color: {_usage_color(percent)};"
+                    "  border-radius: 7px;"
+                    "}"
+                )
             else:
                 bar.setValue(0)
                 bar.setFormat(tr("mounted.usage_unknown"))
