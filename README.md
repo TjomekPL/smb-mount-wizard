@@ -53,31 +53,30 @@ remembered between sessions instead of the app failing. The app's own
 **Diagnostics** tab can check for and install the rest of these after
 you've got it running once.
 
-### 3. Install the Python dependency
+### 3. Install the app
 
+Two options:
+
+**Recommended: proper install under `/opt`**, in its own virtual
+environment, with a menu entry added for your account:
+```bash
+./install.sh
+```
+This is the Linux equivalent of installing an app "properly" instead
+of just running it from wherever you happened to clone it - it puts
+the code under `/opt/smb-mount-wizard` (needs `sudo`) and adds
+**SMB Mount Wizard** to your KDE application menu. To remove it later,
+run `./uninstall.sh`.
+
+**Or: just run it from the cloned folder**, no system-wide install:
 ```bash
 pip install -r requirements.txt --break-system-packages
-```
-
-### 4. Run it
-
-```bash
 python3 main.py
 ```
-
-### 5. *(Optional)* Add it to the KDE application menu
-
-So you don't need a terminal to launch it afterwards:
-
-```bash
-mkdir -p ~/.local/share/applications
-cp packaging/smb-mount-wizard.desktop ~/.local/share/applications/
-update-desktop-database ~/.local/share/applications
-```
-
-If you cloned the repo somewhere other than
-`~/Desktop/smb-mount-wizard`, edit the `Exec=` and `Path=` lines in
-`packaging/smb-mount-wizard.desktop` first to match your actual path.
+If you go this route and still want a menu entry, see
+`packaging/smb-mount-wizard.desktop` - copy it to
+`~/.local/share/applications/` and adjust the `Exec=`/`Path=` lines to
+match wherever you cloned the repo.
 
 ### Installing a specific release instead of the latest code
 

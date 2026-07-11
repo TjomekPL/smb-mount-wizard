@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.0]
+
+### Added
+- Disk usage bar in the Mounted tab (used/total space per mounted
+  share). Computed in a background thread, not the GUI thread - an
+  unresponsive network mount can make `statvfs()` block for a few
+  seconds even with 'soft', and the 3-second auto-refresh timer would
+  otherwise have turned that into a recurring freeze.
+
+### Fixed
+- Regular (non-persistent) mounts now also use the `soft` option,
+  matching persistent (fstab) mounts - previously only persistent
+  mounts had it, so a session mount to a server that later went
+  offline had no bound on how long file operations could hang.
+
+## [0.9.0]
+
+### Added
+- `install.sh` / `uninstall.sh` - a proper install path under
+  `/opt/smb-mount-wizard`, in its own virtual environment, with a
+  desktop menu entry installed automatically. Previously the only
+  option was running the app from wherever it happened to be cloned.
+- README screenshots (`img/1.png`-`4.png`) for each tab.
+
 ## [0.8.1]
 
 ### Added

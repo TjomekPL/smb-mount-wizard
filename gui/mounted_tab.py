@@ -6,13 +6,34 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QTreeWidget,
     QTreeWidgetItem,
+    QProgressBar,
     QMessageBox,
 )
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QThread, pyqtSignal
 
-from core.mount_engine import get_real_mounts, unmount_share
+from core.mount_engine import get_real_mounts, unmount_share, get_disk_usage, format_bytes
 from core.i18n import tr
+
+
+class _DiskUsageThread(QThread):
+    """
+    Computes disk usage for a list of mountpoints off the GUI thread.
+    os.statvfs() can block for a few seconds on an unresponsive
+    network mount even with the 'soft' option - this must never run
+    directly in a Qt slot handler on the main thread.
+    """
+    result_ready = pyqtSignal(dict)  # {target: (used, total) or None}
+
+    def __init__(self, targets):
+        super().__init__()
+        self.targets = targets
+
+    def run(self):
+        results = {}
+        for target in self.targets:
+            results[target] = get_disk_usage(target)
+        self.result_ready.emit(results)
 
 
 class MountedTab(QWidget):
@@ -20,22 +41,24 @@ class MountedTab(QWidget):
     def __init__(self):
         super().__init__()
 
+        self._current_mounts = []
+        self._usage_cache = {}
+        self._usage_thread = None
+
         layout = QVBoxLayout()
 
-        # ---------------- TREE ----------------
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([
             tr("mounted.header_source"),
             tr("mounted.header_target"),
+            tr("mounted.header_usage"),
         ])
 
-        # fixed width for the source column, so full //ip/share paths
-        # aren't clipped (same fix as the Discovery tab)
         self.tree.setColumnWidth(0, 350)
+        self.tree.setColumnWidth(2, 160)
 
         layout.addWidget(self.tree)
 
-        # ---------------- BUTTONS ----------------
         btns = QHBoxLayout()
 
         self.refresh_btn = QPushButton(tr("mounted.refresh_button"))
@@ -55,35 +78,58 @@ class MountedTab(QWidget):
 
         self.setLayout(layout)
 
-        # auto refresh every 3s
         self.timer = QTimer()
         self.timer.timeout.connect(self.load_mounts)
         self.timer.start(3000)
 
         self.load_mounts()
 
-    # ---------------- LOAD ----------------
     def load_mounts(self):
-
-        self.tree.clear()
-
         try:
             mounts = get_real_mounts()
         except Exception:
             mounts = []
 
-        for m in mounts:
+        self._current_mounts = mounts
+        self._render_tree()
 
-            item = QTreeWidgetItem([
-                m.get("source", ""),
-                m.get("target", "")
-            ])
+        if self._usage_thread is None or not self._usage_thread.isRunning():
+            targets = [m.get("target") for m in mounts if m.get("target")]
+            if targets:
+                self._usage_thread = _DiskUsageThread(targets)
+                self._usage_thread.result_ready.connect(self._on_usage_result)
+                self._usage_thread.start()
 
+    def _on_usage_result(self, results):
+        self._usage_cache.update(results)
+        self._render_tree()
+
+    def _render_tree(self):
+        self.tree.clear()
+
+        for m in self._current_mounts:
+            target = m.get("target", "")
+
+            item = QTreeWidgetItem([m.get("source", ""), target])
             self.tree.addTopLevelItem(item)
 
-    # ---------------- UNMOUNT ----------------
-    def unmount_selected(self):
+            bar = QProgressBar()
+            bar.setTextVisible(True)
 
+            usage = self._usage_cache.get(target)
+
+            if usage and usage[1] > 0:
+                used, total = usage
+                percent = min(100, int(used / total * 100))
+                bar.setValue(percent)
+                bar.setFormat(f"{format_bytes(used)} / {format_bytes(total)}")
+            else:
+                bar.setValue(0)
+                bar.setFormat(tr("mounted.usage_unknown"))
+
+            self.tree.setItemWidget(item, 2, bar)
+
+    def unmount_selected(self):
         selected = self.tree.selectedItems()
 
         if not selected:
@@ -112,4 +158,5 @@ class MountedTab(QWidget):
                 err or tr("mounted.unknown_error")
             )
 
+        self._usage_cache.pop(path, None)
         self.load_mounts()

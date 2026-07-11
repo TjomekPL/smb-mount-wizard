@@ -69,8 +69,6 @@ def mount_share(server, share, username=None, password=None,
     script = f'mkdir -p "{target}"\n'
 
     if persist:
-        # persistent /etc/fstab entry (survives reboot) + credentials
-        # in a separate file under /etc, then mount via fstab
         script += build_persist_fragment(
             server, share, target, uid, gid, username, password, smb_version
         )
@@ -82,24 +80,13 @@ def mount_share(server, share, username=None, password=None,
             f"gid={gid}",
             "file_mode=0600",
             "dir_mode=0700",
+            "soft",
         ]
 
         if smb_version:
-            # explicit override - otherwise omit 'vers=' entirely and
-            # let mount.cifs auto-negotiate the best protocol version
-            # with the server (needed for older NAS devices that don't
-            # support SMB 3.0)
             opts.append(f"vers={smb_version}")
 
         if username:
-            # Write credentials to a throwaway temp file instead of
-            # embedding them inline in '-o username=...,password=...'.
-            # Inline credentials show up in plain text in `ps aux` /
-            # /proc/<pid>/cmdline for the duration of the mount call,
-            # readable by ANY local user on the machine - not just the
-            # one doing the mounting. The temp file is root-owned,
-            # chmod 600, and removed immediately after (via trap, so
-            # it's cleaned up even if the mount command itself fails).
             cred_lines = [f"username={username}"]
             if password:
                 cred_lines.append(f"password={password}")
@@ -160,6 +147,30 @@ def unmount_share(path, remove_fstab=False):
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
+
+
+def get_disk_usage(path):
+    """
+    Returns (used_bytes, total_bytes) for the filesystem mounted at
+    path, or None if it can't be determined right now (share went
+    offline, stale mount, etc). Note: on an unresponsive network
+    mount this call CAN block for a few seconds even with the 'soft'
+    mount option - callers should run this off the GUI thread.
+    """
+    try:
+        stat = os.statvfs(path)
+        total = stat.f_frsize * stat.f_blocks
+        free = stat.f_frsize * stat.f_bavail
+        return total - free, total
+    except Exception:
+        return None
+
+
+def format_bytes(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024 or unit == "TB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{int(n)} {unit}"
+        n /= 1024
 
 
 def detect_mounts():
