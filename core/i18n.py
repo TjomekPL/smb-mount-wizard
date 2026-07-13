@@ -1,3 +1,4 @@
+# core/i18n.py
 from core.settings import get_settings, save_settings
 
 DEFAULT_LANGUAGE = "en"
@@ -95,7 +96,8 @@ TRANSLATIONS = {
         "diagnostics.purpose.cifs_utils": "Mounting SMB shares",
         "diagnostics.purpose.pkexec": "Privilege escalation for mount / fstab writes",
         "diagnostics.purpose.secret_tool": "Remembering SMB credentials between sessions (KWallet / Secret Service)",
-        "diagnostics.optional_title": "Optional",
+        "diagnostics.purpose.nmblookup": "Showing computer names next to LAN addresses (NetBIOS lookup)",
+        "diagnostics.optional_title": "Recommended",
         "diagnostics.install_optional_button": "Install optional",
 
         "auth.title": "SMB Login - {host}",
@@ -196,7 +198,8 @@ TRANSLATIONS = {
         "diagnostics.purpose.cifs_utils": "Montowanie udziałów SMB",
         "diagnostics.purpose.pkexec": "Podniesienie uprawnień do montowania / zapisu fstab",
         "diagnostics.purpose.secret_tool": "Zapamiętywanie danych logowania między sesjami (KWallet / Secret Service)",
-        "diagnostics.optional_title": "Opcjonalne",
+        "diagnostics.purpose.nmblookup": "Pokazywanie nazw komputerów obok adresów LAN (zapytanie NetBIOS)",
+        "diagnostics.optional_title": "Zalecane",
         "diagnostics.install_optional_button": "Zainstaluj opcjonalne",
 
         "auth.title": "Logowanie SMB - {host}",

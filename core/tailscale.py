@@ -23,7 +23,10 @@ def get_tailscale_hosts():
     in the tailnet and its 100.x.x.x address - much lighter than
     trying to scan the huge 100.64.0.0/10 range directly.
     """
+    print("[tailscale] get_tailscale_hosts() called")
+
     if not is_available():
+        print("[tailscale] 'tailscale' binary not found on PATH")
         return []
 
     try:

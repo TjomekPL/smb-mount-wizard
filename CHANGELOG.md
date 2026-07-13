@@ -2,6 +2,46 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.14.2]
+
+### Debugging
+- `get_tailscale_hosts()` was silently returning early (with zero log
+  output) when the `tailscale` binary wasn't found on PATH - added a
+  print for that case plus an unconditional entry-point log, so a
+  completely silent scan now clearly points at a PATH issue rather
+  than looking indistinguishable from "the function was never called".
+
+## [0.14.1]
+
+### Fixed
+- Unmounting now automatically falls back to a lazy unmount
+  (`umount -l`) if a plain unmount fails - a share whose connection
+  died silently (e.g. after suspend/resume) can leave a mount that a
+  plain `umount` refuses to touch ("target is busy") even though it's
+  actually dead. No more need to drop to a terminal to recover a
+  stale mount.
+
+### Debugging
+- `core/tailscale.py` now prints per-peer diagnostics (Online status,
+  whether an IP was found, whether port 445 responded) to help track
+  down why a specific online peer isn't being picked up.
+
+## [0.14.0]
+
+### Added
+- Tailscale devices are now discovered automatically alongside the
+  regular LAN scan - quietly, with no separate button or toggle. If
+  the `tailscale` CLI is present, `tailscale status --json` is queried
+  for online peers (much lighter than trying to scan the huge
+  100.64.0.0/10 range directly), and each one is checked for an open
+  SMB port. If `tailscale` isn't installed, this is skipped silently.
+- Discovery now shows a hostname next to the address when one is known
+  - from Tailscale's device name, or from nmap's reverse-DNS lookup
+  during a LAN scan when one resolves. The address itself (used for
+  actually connecting) is unaffected; the hostname is purely a display
+  label, stored separately so it can never get mistaken for the real
+  host to connect to.
+
 ## [0.13.0] - Verified end-to-end on a fresh Debian install
 
 This release bundles a full round of fixes found by installing and

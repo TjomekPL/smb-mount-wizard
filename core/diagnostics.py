@@ -1,3 +1,4 @@
+# core/diagnostics.py
 import os
 import shutil
 import subprocess
@@ -33,6 +34,11 @@ def _resolve_pkexec_packages():
     return ["polkitd", "pkexec"]
 
 
+# Binaries the app actually shells out to, mapped to the Debian
+# package(s) that provide them. "packages" is always a list, even for
+# single-package tools, so install_packages() can pass every name as
+# its own separate argv element (never a single string containing a
+# space, which apt would treat as one malformed package name).
 REQUIRED_TOOLS = [
     {
         "binary": "nmap",
@@ -67,6 +73,11 @@ RECOMMENDED_TOOLS = [
         "binary": "secret-tool",
         "packages": ["libsecret-tools"],
         "purpose_key": "diagnostics.purpose.secret_tool",
+    },
+    {
+        "binary": "nmblookup",
+        "packages": ["samba-common-bin"],
+        "purpose_key": "diagnostics.purpose.nmblookup",
     },
 ]
 

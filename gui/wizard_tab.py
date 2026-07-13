@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QMessageBox
 )
+from PyQt6.QtCore import Qt
 
 from core.discovery import (
     scan_smb_hosts,
@@ -22,7 +23,14 @@ from core.discovery import (
 )
 from core.auth import AuthDialog
 from core.mount_engine import mount_share, get_real_mounts
-from core.manual_servers import get_servers, add_server, remove_server, merge_discovered
+from core.manual_servers import (
+    get_servers,
+    add_server,
+    remove_server,
+    merge_discovered,
+    get_server_display_map,
+)
+from core.tailscale import get_tailscale_hosts
 from core.i18n import tr
 from core.settings import get_smb_version_override
 from kde import kwallet
@@ -78,10 +86,14 @@ class WizardTab(QWidget):
 
         self.load_saved_servers()
 
-    def add_host_row(self, host):
+    def add_host_row(self, host, display_map=None):
         host = str(host) if host is not None else ""
+        hostname = (display_map or {}).get(host)
+        label = f"{host} ({hostname})" if hostname else host
 
-        item = QTreeWidgetItem([host])
+        item = QTreeWidgetItem([label])
+        item.setData(0, Qt.ItemDataRole.UserRole, host)
+
         item.addChild(QTreeWidgetItem([tr("wizard.loading")]))
         self.tree.addTopLevelItem(item)
 
@@ -112,9 +124,10 @@ class WizardTab(QWidget):
         self.tree.clear()
 
         hosts = get_servers()
+        display_map = get_server_display_map()
 
         for host in hosts:
-            self.add_host_row(host)
+            self.add_host_row(host, display_map)
 
     def scan(self):
         warning = None
@@ -127,22 +140,25 @@ class WizardTab(QWidget):
         except Exception:
             pass
 
-        if scanned is not None:
-            # Only merge/prune when the scan actually ran - if it
-            # failed to run at all (e.g. nmap missing), don't wipe out
-            # previously discovered hosts just because we don't know
-            # this time whether they're still there.
+        try:
+            tailscale_hosts = get_tailscale_hosts()
+        except Exception:
+            tailscale_hosts = []
+
+        if scanned is not None or tailscale_hosts:
+            combined = (scanned or []) + tailscale_hosts
             try:
-                merge_discovered(scanned)
+                merge_discovered(combined)
             except Exception:
                 pass
 
         hosts = get_servers()
+        display_map = get_server_display_map()
 
         self.tree.clear()
 
         for host in hosts:
-            self.add_host_row(host)
+            self.add_host_row(host, display_map)
 
         if warning:
             QMessageBox.warning(self, tr("wizard.scan_warning_title"), warning)
@@ -161,7 +177,7 @@ class WizardTab(QWidget):
         if item.parent() is not None:
             return
 
-        host = item.text(0)
+        host = item.data(0, Qt.ItemDataRole.UserRole)
 
         if not isinstance(host, str) or not host:
             return
