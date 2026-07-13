@@ -1,3 +1,4 @@
+# gui/wizard_tab.py
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -285,11 +286,12 @@ class WizardTab(QWidget):
                     creds_local = (username, password)
 
                 smb_version = get_smb_version_override() or None
+                display_name = get_server_display_map().get(h)
 
                 if creds_local:
-                    result = mount_share(h, s, *creds_local, smb_version=smb_version, persist=persist)
+                    result = mount_share(h, s, *creds_local, smb_version=smb_version, persist=persist, display_name=display_name)
                 else:
-                    result = mount_share(h, s, smb_version=smb_version, persist=persist)
+                    result = mount_share(h, s, smb_version=smb_version, persist=persist, display_name=display_name)
 
                 stderr = (result.get("stderr") or "").lower()
                 needs_auth = (
@@ -314,7 +316,7 @@ class WizardTab(QWidget):
                     if dialog.exec():
                         username, password = dialog.get_credentials()
                         creds_local = (username, password)
-                        result = mount_share(h, s, username, password, smb_version=smb_version, persist=persist)
+                        result = mount_share(h, s, username, password, smb_version=smb_version, persist=persist, display_name=display_name)
 
                 if result.get("success"):
                     btn.setText(tr("wizard.mounted_button"))

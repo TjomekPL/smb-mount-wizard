@@ -1,3 +1,4 @@
+# gui/mounted_tab.py
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -14,26 +15,34 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer, QThread, pyqtSignal, Qt
 
 from core.mount_engine import get_real_mounts, unmount_share, get_disk_usage, format_bytes
+from core.manual_servers import get_server_display_map
 from core.i18n import tr
 
 
 def _usage_color(percent):
     if percent >= 90:
-        return "#e74c3c"  # red - almost full
+        return "#e74c3c"
     elif percent >= 70:
-        return "#f39c2d"  # orange - getting full
+        return "#f39c2d"
     else:
-        return "#2a8fd8"  # blue - plenty of room
+        return "#2a8fd8"
+
+
+def _split_source(source):
+    """
+    '//192.168.0.201/storage' -> ('192.168.0.201', 'storage')
+    """
+    if source.startswith("//"):
+        rest = source[2:]
+        if "/" in rest:
+            server, share = rest.split("/", 1)
+            return server, share
+        return rest, ""
+    return source, ""
 
 
 class _DiskUsageThread(QThread):
-    """
-    Computes disk usage for a list of mountpoints off the GUI thread.
-    os.statvfs() can block for a few seconds on an unresponsive
-    network mount even with the 'soft' option - this must never run
-    directly in a Qt slot handler on the main thread.
-    """
-    result_ready = pyqtSignal(dict)  # {target: (used, total) or None}
+    result_ready = pyqtSignal(dict)
 
     def __init__(self, targets):
         super().__init__()
@@ -64,16 +73,13 @@ class MountedTab(QWidget):
             tr("mounted.header_usage"),
         ])
 
-        # Source and Usage get a sensible fixed-ish width (still
-        # user-resizable); Mountpoint absorbs whatever space is left,
-        # so there's no dead empty area after the last column.
         header = self.tree.header()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
 
-        self.tree.setColumnWidth(0, 300)
+        self.tree.setColumnWidth(0, 250)
         self.tree.setColumnWidth(2, 150)
 
         layout.addWidget(self.tree)
@@ -126,41 +132,63 @@ class MountedTab(QWidget):
     def _render_tree(self):
         self.tree.clear()
 
+        display_map = get_server_display_map()
+
+        groups = {}
+        order = []
+
         for m in self._current_mounts:
-            target = m.get("target", "")
+            server, share = _split_source(m.get("source", ""))
 
-            item = QTreeWidgetItem([m.get("source", ""), target])
-            self.tree.addTopLevelItem(item)
+            if server not in groups:
+                groups[server] = []
+                order.append(server)
 
-            bar = QProgressBar()
-            bar.setTextVisible(True)
-            bar.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            bar.setFixedHeight(20)
+            groups[server].append((share, m))
 
-            usage = self._usage_cache.get(target)
+        for server in order:
+            hostname = display_map.get(server)
+            label = f"{server} ({hostname})" if hostname else server
 
-            if usage and usage[1] > 0:
-                used, total = usage
-                percent = min(100, int(used / total * 100))
-                bar.setValue(percent)
-                bar.setFormat(f"{format_bytes(used)} / {format_bytes(total)}  ")
-                bar.setStyleSheet(
-                    "QProgressBar {"
-                    "  border: 1px solid palette(mid);"
-                    "  border-radius: 8px;"
-                    "  background-color: palette(alternate-base);"
-                    "  padding: 1px;"
-                    "}"
-                    "QProgressBar::chunk {"
-                    f"  background-color: {_usage_color(percent)};"
-                    "  border-radius: 7px;"
-                    "}"
-                )
-            else:
-                bar.setValue(0)
-                bar.setFormat(tr("mounted.usage_unknown"))
+            parent = QTreeWidgetItem([label, "", ""])
+            self.tree.addTopLevelItem(parent)
+            parent.setExpanded(True)
 
-            self.tree.setItemWidget(item, 2, bar)
+            for share, m in groups[server]:
+                target = m.get("target", "")
+
+                child = QTreeWidgetItem([share, target, ""])
+                parent.addChild(child)
+
+                bar = QProgressBar()
+                bar.setTextVisible(True)
+                bar.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                bar.setFixedHeight(20)
+
+                usage = self._usage_cache.get(target)
+
+                if usage and usage[1] > 0:
+                    used, total = usage
+                    percent = min(100, int(used / total * 100))
+                    bar.setValue(percent)
+                    bar.setFormat(f"{format_bytes(used)} / {format_bytes(total)}  ")
+                    bar.setStyleSheet(
+                        "QProgressBar {"
+                        "  border: 1px solid palette(mid);"
+                        "  border-radius: 8px;"
+                        "  background-color: palette(alternate-base);"
+                        "  padding: 1px;"
+                        "}"
+                        "QProgressBar::chunk {"
+                        f"  background-color: {_usage_color(percent)};"
+                        "  border-radius: 7px;"
+                        "}"
+                    )
+                else:
+                    bar.setValue(0)
+                    bar.setFormat(tr("mounted.usage_unknown"))
+
+                self.tree.setItemWidget(child, 2, bar)
 
     def unmount_selected(self):
         selected = self.tree.selectedItems()
@@ -168,7 +196,17 @@ class MountedTab(QWidget):
         if not selected:
             return
 
-        path = selected[0].text(1)
+        item = selected[0]
+
+        if item.childCount() > 0:
+            QMessageBox.information(
+                self,
+                tr("mounted.error_title"),
+                tr("mounted.select_share_not_server")
+            )
+            return
+
+        path = item.text(1)
         remove_fstab = self.remove_fstab_checkbox.isChecked()
 
         try:

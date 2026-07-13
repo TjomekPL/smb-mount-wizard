@@ -49,6 +49,7 @@ TRANSLATIONS = {
         "mounted.error_title": "Error",
         "mounted.unmount_failed_title": "Unmount failed",
         "mounted.unknown_error": "Unknown error",
+        "mounted.select_share_not_server": "Select a specific share to unmount, not the whole server group.",
 
         "settings.mount_location_label": "Default mount location",
         "settings.save_button": "Save",
@@ -151,6 +152,7 @@ TRANSLATIONS = {
         "mounted.error_title": "Błąd",
         "mounted.unmount_failed_title": "Błąd odmontowania",
         "mounted.unknown_error": "Nieznany błąd",
+        "mounted.select_share_not_server": "Zaznacz konkretny udział do odmontowania, nie całą grupę serwera.",
 
         "settings.mount_location_label": "Domyślna lokalizacja montowania",
         "settings.save_button": "Zapisz",

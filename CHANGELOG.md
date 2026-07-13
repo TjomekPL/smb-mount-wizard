@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.16.0]
+
+### Added
+- Mount points now use the friendly hostname for the directory name
+  (e.g. `/mnt/servername/storage1`) instead of the sanitized IP
+  (`/mnt/192_168_0_201/storage1`), when a hostname is known. The actual
+  SMB connection - and the fstab entry for persistent mounts - always
+  still uses the real IP address, never the hostname, since that
+  doesn't depend on any name resolution working at boot/mount time.
+  Falls back to the old IP-based naming if no hostname is known for
+  that server.
+- Mounted tab now groups shares by server instead of a flat list -
+  e.g. `servername` as a parent row with `storage1` and
+  `storage2` underneath it. Unmounting a server-group row (instead
+  of a specific share) shows a message asking you to pick the
+  individual share instead.
+
 ## [0.15.0]
 
 ### Added

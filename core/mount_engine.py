@@ -1,4 +1,6 @@
+# core/mount_engine.py
 import os
+import re
 import base64
 import subprocess
 import tempfile
@@ -8,14 +10,29 @@ from core.settings import get_default_mount_base
 from core.fstab import build_persist_fragment, remove_fstab_line
 
 
-def get_mount_path(server, share):
-    # zabezpieczenie przed "False", None itd.
+def _sanitize_path_component(s):
+    """
+    Turns a hostname/label into something safe to use as a single
+    directory name - keeps letters, digits, dots, dashes and
+    underscores, replaces anything else with '_', and lowercases it
+    (so an all-caps NetBIOS name like TORRENTSERVER becomes a normal-
+    looking directory name instead of shouting).
+    """
+    cleaned = re.sub(r'[^A-Za-z0-9_.-]', '_', s).strip('_')
+    return cleaned.lower() or "_"
+
+
+def get_mount_path(server, share, display_name=None):
     if not isinstance(server, str):
         raise ValueError(f"Invalid server: {server}")
     if not isinstance(share, str):
         raise ValueError(f"Invalid share: {share}")
 
-    safe_server = server.replace(".", "_")
+    if display_name:
+        safe_server = _sanitize_path_component(display_name)
+    else:
+        safe_server = server.replace(".", "_")
+
     safe_share = share.replace("/", "_")
 
     base = get_default_mount_base()
@@ -24,12 +41,6 @@ def get_mount_path(server, share):
 
 
 class _FailedResult:
-    """
-    Minimal stand-in for subprocess.CompletedProcess, used when the
-    command itself can't even be launched (e.g. pkexec missing) so
-    calling code can keep reading .returncode/.stdout/.stderr the
-    same way regardless of what went wrong.
-    """
     def __init__(self, message):
         self.returncode = 1
         self.stdout = ""
@@ -37,12 +48,6 @@ class _FailedResult:
 
 
 def _run_privileged_script(script_body):
-    """
-    Zapisuje skrypt do tymczasowego pliku i uruchamia go JEDNYM
-    wywolaniem pkexec - dzieki temu niezaleznie od tego, ile krokow
-    wymaga uprawnien roota (mkdir, mount, zapis fstab), uzytkownik
-    jest pytany o haslo administratora tylko raz.
-    """
     script = "#!/bin/bash\nset -e\n" + script_body
 
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as f:
@@ -73,8 +78,8 @@ def _run_privileged_script(script_body):
 
 
 def mount_share(server, share, username=None, password=None,
-                 smb_version=None, persist=False):
-    target = get_mount_path(server, share)
+                 smb_version=None, persist=False, display_name=None):
+    target = get_mount_path(server, share, display_name=display_name)
 
     uid = os.getuid()
     gid = os.getgid()
@@ -82,25 +87,10 @@ def mount_share(server, share, username=None, password=None,
     script = f'mkdir -p "{target}"\n'
 
     if persist:
-        # Write the /etc/fstab entry (with its own separate credentials
-        # file and the systemd-specific options like _netdev, nofail,
-        # x-systemd.automount) so this share mounts itself automatically
-        # on FUTURE boots. This does NOT do the actual mount below -
-        # kept deliberately separate, see the comment further down.
         script += build_persist_fragment(
             server, share, target, uid, gid, username, password, smb_version
         )
 
-    # Real, cifs.ko-level mount options for the mount happening RIGHT
-    # NOW - used whether or not we're also persisting to fstab. Kept
-    # deliberately separate from the fstab-only pseudo-options above
-    # (_netdev, nofail, x-systemd.*): those are meaningful to systemd's
-    # boot-time fstab processing, but are NOT valid mount.cifs
-    # arguments. Mounting via `mount "{target}"` (which re-reads fstab
-    # and hands ALL of its options straight to mount.cifs) caused
-    # 'mount error(22): Invalid argument' because of exactly that -
-    # so the immediate mount always uses this clean option set instead
-    # of going through fstab.
     opts = [
         f"uid={uid}",
         f"gid={gid}",
@@ -110,21 +100,9 @@ def mount_share(server, share, username=None, password=None,
     ]
 
     if smb_version:
-        # explicit override - otherwise omit 'vers=' entirely and
-        # let mount.cifs auto-negotiate the best protocol version
-        # with the server (needed for older NAS devices that don't
-        # support SMB 3.0)
         opts.append(f"vers={smb_version}")
 
     if username:
-        # Write credentials to a throwaway temp file instead of
-        # embedding them inline in '-o username=...,password=...'.
-        # Inline credentials show up in plain text in `ps aux` /
-        # /proc/<pid>/cmdline for the duration of the mount call,
-        # readable by ANY local user on the machine - not just the
-        # one doing the mounting. The temp file is root-owned,
-        # chmod 600, and removed immediately after (via trap, so
-        # it's cleaned up even if the mount command itself fails).
         cred_lines = [f"username={username}"]
         if password:
             cred_lines.append(f"password={password}")
@@ -164,12 +142,6 @@ def unmount_share(path, remove_fstab=False):
         }
 
     if remove_fstab:
-        # Try a normal unmount first, then fall back to a lazy one
-        # (-l) if that fails - a share whose connection died silently
-        # (e.g. after suspend/resume) can leave a mount that a plain
-        # `umount` refuses to touch ("target is busy") even though
-        # it's actually dead. Lazy unmount detaches it immediately
-        # regardless.
         script = (
             f'umount "{path}" || umount -l "{path}"\n'
         ) + remove_fstab_line(path)
@@ -203,13 +175,6 @@ def unmount_share(path, remove_fstab=False):
 
 
 def get_disk_usage(path):
-    """
-    Returns (used_bytes, total_bytes) for the filesystem mounted at
-    path, or None if it can't be determined right now (share went
-    offline, stale mount, etc). Note: on an unresponsive network
-    mount this call CAN block for a few seconds even with the 'soft'
-    mount option - callers should run this off the GUI thread.
-    """
     try:
         stat = os.statvfs(path)
         total = stat.f_frsize * stat.f_blocks
