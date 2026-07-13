@@ -13,7 +13,9 @@ from PyQt6.QtGui import QColor
 
 from core.diagnostics import (
     get_dependency_status,
+    get_optional_status,
     get_missing_packages,
+    get_missing_optional_packages,
     install_packages,
 )
 from core.i18n import tr
@@ -35,7 +37,7 @@ class DiagnosticsTab(QWidget):
             tr("diagnostics.header_status"),
             tr("diagnostics.header_purpose"),
         ])
-        self.tree.setColumnWidth(0, 100)
+        self.tree.setColumnWidth(0, 180)
         self.tree.setColumnWidth(1, 100)
         self.tree.setColumnWidth(2, 60)
 
@@ -65,37 +67,51 @@ class DiagnosticsTab(QWidget):
 
         self.refresh()
 
+    def _add_row(self, tool, recommended=False):
+        ok = tool["installed"]
+        state = tr("diagnostics.status_ok") if ok else tr("diagnostics.status_missing")
+        purpose = tr(tool["purpose_key"])
+
+        label = tool["binary"]
+        if recommended:
+            label += f" ({tr('diagnostics.optional_title')})"
+
+        item = QTreeWidgetItem([
+            label,
+            tool["package"],
+            state,
+            purpose,
+        ])
+
+        if ok:
+            color = QColor("darkgreen")
+        elif recommended:
+            color = QColor("darkorange")
+        else:
+            color = QColor("red")
+
+        for col in range(4):
+            item.setForeground(col, color)
+
+        self.tree.addTopLevelItem(item)
+
     def refresh(self):
         self.tree.clear()
 
-        status = get_dependency_status()
-        any_missing = False
+        for tool in get_dependency_status():
+            self._add_row(tool, recommended=False)
 
-        for tool in status:
-            ok = tool["installed"]
-            state = tr("diagnostics.status_ok") if ok else tr("diagnostics.status_missing")
-            purpose = tr(tool["purpose_key"])
+        for tool in get_optional_status():
+            self._add_row(tool, recommended=True)
 
-            item = QTreeWidgetItem([
-                tool["binary"],
-                tool["package"],
-                state,
-                purpose,
-            ])
-
-            color = QColor("darkgreen") if ok else QColor("red")
-            for col in range(4):
-                item.setForeground(col, color)
-
-            if not ok:
-                any_missing = True
-
-            self.tree.addTopLevelItem(item)
-
+        any_missing = bool(get_missing_packages()) or bool(get_missing_optional_packages())
         self.install_btn.setEnabled(any_missing)
 
     def install_missing(self):
         missing = get_missing_packages()
+
+        if not missing:
+            missing = get_missing_optional_packages()
 
         if not missing:
             QMessageBox.information(

@@ -4,6 +4,16 @@ set -e
 INSTALL_DIR="/opt/smb-mount-wizard"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+echo "Installing required system packages (needs sudo)..."
+sudo apt-get update -qq
+sudo apt-get install -y python3-venv nmap smbclient cifs-utils libsecret-tools
+
+# policykit-1 was split into polkitd + pkexec on Debian 13 (trixie) and
+# newer - try the old single-package name first, fall back to the new
+# split names if that fails, so this works across Debian versions.
+sudo apt-get install -y policykit-1 || sudo apt-get install -y polkitd pkexec
+
+echo
 echo "Installing SMB Mount Wizard to $INSTALL_DIR ..."
 echo "(this needs sudo, since /opt is a system-wide directory)"
 echo
@@ -42,5 +52,3 @@ update-desktop-database ~/.local/share/applications 2>/dev/null || true
 
 echo
 echo "Done. Look for 'SMB Mount Wizard' in your application menu."
-echo "(System-level tools like nmap/smbclient/cifs-utils/pkexec are"
-echo "still checked separately - see the app's own Diagnostics tab.)"

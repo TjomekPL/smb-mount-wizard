@@ -22,7 +22,7 @@ from core.discovery import (
 )
 from core.auth import AuthDialog
 from core.mount_engine import mount_share, get_real_mounts
-from core.manual_servers import get_servers, add_server, remove_server
+from core.manual_servers import get_servers, add_server, remove_server, merge_discovered
 from core.i18n import tr
 from core.settings import get_smb_version_override
 from kde import kwallet
@@ -112,28 +112,32 @@ class WizardTab(QWidget):
         self.tree.clear()
 
         hosts = get_servers()
-        hosts = sorted(list(set(hosts)))
 
         for host in hosts:
             self.add_host_row(host)
 
     def scan(self):
-        hosts = []
         warning = None
+        scanned = None
 
         try:
-            hosts.extend(get_servers())
-        except Exception:
-            pass
-
-        try:
-            hosts.extend(scan_smb_hosts())
+            scanned = scan_smb_hosts()
         except RuntimeError as e:
             warning = str(e)
         except Exception:
             pass
 
-        hosts = sorted(list(set(hosts)))
+        if scanned is not None:
+            # Only merge/prune when the scan actually ran - if it
+            # failed to run at all (e.g. nmap missing), don't wipe out
+            # previously discovered hosts just because we don't know
+            # this time whether they're still there.
+            try:
+                merge_discovered(scanned)
+            except Exception:
+                pass
+
+        hosts = get_servers()
 
         self.tree.clear()
 
@@ -249,6 +253,11 @@ class WizardTab(QWidget):
                     if saved:
                         creds_local = saved
 
+                if not creds_local:
+                    listing_creds = self.auth_cache.get(h)
+                    if listing_creds:
+                        creds_local = listing_creds
+
                 if not creds_local and not share_accessible_as_guest(h, s):
                     dialog = AuthDialog(h)
 
@@ -299,6 +308,9 @@ class WizardTab(QWidget):
                     if creds_local:
                         self.mount_auth_cache[mount_key] = creds_local
                         kwallet.save_credentials(wallet_key, *creds_local)
+
+                        if not self.auth_cache.get(h):
+                            self.auth_cache[h] = creds_local
 
                     QMessageBox.information(
                         self,

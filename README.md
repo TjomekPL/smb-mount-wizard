@@ -44,9 +44,19 @@ cd smb-mount-wizard
 
 ### 2. Install the required system packages (Debian)
 
+**Skip this step if you're using `install.sh` below (step 3)** - it
+installs all of these automatically. Only needed if you plan to run
+the app directly from the cloned folder instead.
+
 ```bash
-sudo apt install python3-pip nmap smbclient cifs-utils policykit-1 libsecret-tools
+sudo apt install python3-pip python3-venv nmap smbclient cifs-utils libsecret-tools
+sudo apt install policykit-1 || sudo apt install polkitd pkexec
 ```
+
+The second line handles a Debian packaging change: older releases ship
+`pkexec` inside a single `policykit-1` package, while Debian 13
+(trixie) and newer split it into `polkitd` + `pkexec` instead. The
+command tries the old name first and falls back automatically.
 
 `libsecret-tools` is optional - without it, credentials just aren't
 remembered between sessions instead of the app failing. The app's own

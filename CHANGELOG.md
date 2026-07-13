@@ -2,6 +2,188 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.13.0] - Verified end-to-end on a fresh Debian install
+
+This release bundles a full round of fixes found by installing and
+testing the app on a genuinely fresh Debian machine, following its own
+README/install.sh from scratch. Everything below was needed to get
+from "clone the repo" to "scan, mount, and persist a share" working
+without any manual workarounds.
+
+### Fixed
+- **Critical: persistent mounts failed with `mount error(22): Invalid
+  argument`.** The "Persist" option finished by re-reading /etc/fstab
+  and handing every option on that line straight to `mount.cifs` -
+  including systemd/boot-only pseudo-options (`_netdev`, `nofail`,
+  `x-systemd.automount`, `x-systemd.mount-timeout=10`) that
+  `mount.cifs` doesn't understand. Mounting now always uses a direct
+  `mount -t cifs ... -o <clean options>` call; the `/etc/fstab` entry
+  (with the systemd-specific options) is written separately, purely so
+  the share mounts itself automatically on *future* boots.
+- `policykit-1` doesn't exist as a package name on Debian 13+ (split
+  into `polkitd` + `pkexec`). Diagnostics and `install.sh` now detect
+  which naming a system uses and install the right one automatically.
+- Diagnostics could show a tool (notably `mount.cifs`) as still
+  missing right after successfully installing it, because it only
+  checked the regular PATH - cifs-utils installs mount.cifs under
+  `/usr/sbin`, which isn't on a normal user's PATH even though root
+  (via pkexec) already has it. check_tool() now also checks
+  /sbin, /usr/sbin, and /usr/local/sbin.
+- "Install missing" gave a raw Python `FileNotFoundError` when
+  `pkexec` itself was one of the missing tools - it now explains
+  clearly that this one has to be installed manually first (since
+  installing anything via pkexec requires pkexec to already exist).
+- `install.sh` now checks for (and installs) the Python `venv` module
+  up front, instead of copying files to `/opt` first and only then
+  failing partway through.
+- Server list is now sorted numerically by IP address (e.g.
+  `192.168.0.2` before `192.168.0.100`) instead of plain alphabetical
+  string sorting, which ordered them incorrectly.
+- Diagnostics: widened the Tool column so labels like
+  "secret-tool (Recommended)" aren't clipped.
+
+### Changed
+- `install.sh` now installs **all** required system packages itself
+  (nmap, smbclient, cifs-utils, libsecret-tools, python3-venv, and
+  policykit-1/polkitd+pkexec) instead of just setting up the Python
+  virtual environment - fixes a real case where a fresh Debian install
+  had no `secret-tool`, so credentials silently weren't being
+  remembered between sessions.
+- `secret-tool` sits in its own "Recommended" tier in Diagnostics
+  (shown in orange, not red, when missing). The single "Install
+  missing" button installs required tools first; a second click
+  installs recommended ones once required tools are satisfied.
+- The listing (Discovery) and mounting credential caches now share
+  with each other within a session: credentials entered to browse a
+  host's shares are tried first when mounting one of them, and
+  confirmed-working mount credentials are fed back for browsing other
+  shares on that host - no more typing the same login twice in a row
+  for the common case where it's the same account.
+
+### Added
+- Discovered servers now persist across app restarts, not just
+  manually-added ones. Each host's origin (manual vs discovered) is
+  tracked: manually added servers are never auto-removed; discovered
+  ones stick around after closing the app, but get pruned
+  automatically the next time a scan doesn't find them again.
+
+## [0.12.0]
+
+### Added
+- Discovered servers now persist across app restarts, not just
+  manually-added ones. `core/manual_servers.py` now tracks each host's
+  origin (manual vs discovered): manually added servers are never
+  auto-removed; discovered ones stick around after closing the app,
+  but get pruned automatically the next time a scan doesn't find them
+  again.
+
+### Fixed
+- Server list is now sorted numerically by IP address (e.g.
+  `192.168.0.2` before `192.168.0.100`) instead of plain alphabetical
+  sorting, which ordered them incorrectly as strings.
+- Diagnostics: widened the Tool column so labels like
+  "secret-tool (Recommended)" aren't clipped.
+
+## [0.11.4]
+
+### Changed
+- `secret-tool` is back to its own "Recommended" tier in Diagnostics
+  (shown in orange, not red, when missing) instead of being lumped in
+  with the strictly-required tools. The single "Install missing"
+  button now installs required tools first; once those are all
+  present, clicking it again installs recommended ones - so it takes
+  two clicks if both are missing, matching the distinction between
+  "the app won't work without this" and "nice to have".
+
+## [0.11.3]
+
+### Changed
+- `secret-tool` (libsecret-tools) moved from the "Optional" section in
+  Diagnostics to the main required-tools list, matching install.sh now
+  installing it by default. The "Optional" section stays in place
+  (empty for now) for future genuinely-optional additions.
+
+## [0.11.2]
+
+### Changed
+- `install.sh` now installs all required system packages itself
+  (nmap, smbclient, cifs-utils, libsecret-tools, python3-venv, and
+  policykit-1/polkitd+pkexec depending on Debian version) instead of
+  just checking for the Python venv module and erroring out. Fixes a
+  real case where a fresh Debian install had no `secret-tool`, so
+  credentials silently weren't being remembered between sessions.
+  README updated to note this step is now optional if using
+  install.sh.
+
+## [0.11.1]
+
+### Changed
+- The listing (Discovery) and mounting credential caches now share
+  with each other within a session: credentials entered to browse a
+  host's shares are tried first when mounting one of them, and
+  credentials confirmed working for a mount are fed back for browsing
+  other shares on that host - so you're no longer asked to type in the
+  same login twice in a row for the common case where it's the same
+  account. If a share genuinely needs different credentials, the
+  existing retry/prompt flow still catches that and asks again.
+
+## [0.11.0]
+
+### Fixed
+- **Persistent mounts failed with `mount error(22): Invalid argument`.**
+  The "Persist" option finished by running `mount "{target}"`, which
+  re-reads /etc/fstab and hands every option on that line straight to
+  `mount.cifs` - including systemd/boot-only pseudo-options
+  (`_netdev`, `nofail`, `x-systemd.automount`,
+  `x-systemd.mount-timeout=10`) that `mount.cifs` doesn't understand
+  and rejects. The immediate mount now always uses a direct
+  `mount -t cifs ... -o <clean options>` call (uid/gid/file_mode/
+  dir_mode/soft/vers/credentials only), regardless of whether
+  "Persist" is checked. The `/etc/fstab` entry (with the
+  systemd-specific options) is still written separately, purely so the
+  share mounts itself automatically on *future* boots via systemd -
+  it's no longer involved in the mount that happens right now.
+
+## [0.10.5]
+
+### Fixed
+- Diagnostics could show a tool (notably `mount.cifs`) as still
+  missing right after successfully installing it, because it only
+  checked the regular PATH - but cifs-utils installs mount.cifs under
+  `/usr/sbin`, which isn't on a normal user's PATH on Debian even
+  though the binary works fine (root, via pkexec, already has it on
+  PATH). check_tool() now also looks in /sbin, /usr/sbin, and
+  /usr/local/sbin.
+
+## [0.10.4]
+
+### Fixed
+- "Install missing" in Diagnostics now gives a clear, actionable
+  message when `pkexec` itself is one of the missing tools (a raw
+  Python `FileNotFoundError` was shown before). This case can't be
+  fixed by the button itself - installing anything via pkexec requires
+  pkexec to already exist - so the app now says exactly which manual
+  command to run instead of failing cryptically.
+
+## [0.10.3]
+
+### Fixed
+- `install.sh` now checks upfront whether the Python `venv` module is
+  available (Debian ships it as a separate `python3-venv` package)
+  and fails fast with a clear message, instead of copying files to
+  `/opt` first and only then failing partway through. README updated
+  to include `python3-venv` in the required packages.
+
+## [0.10.2]
+
+### Fixed
+- `policykit-1` doesn't exist as a package name on newer Debian
+  releases (split into `polkitd` + `pkexec`). Diagnostics now detects
+  which naming a given system uses via `apt-cache show` and installs
+  the right one automatically, instead of hardcoding `policykit-1`
+  and failing on newer releases. README updated with the same note
+  for the manual install path.
+
 ## [0.10.1]
 
 ### Fixed

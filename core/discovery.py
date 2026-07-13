@@ -4,6 +4,7 @@ import os
 import tempfile
 import ipaddress
 import socket
+import re
 from core.runtime import run
 
 # Internal control-flow sentinels (NOT user-facing text - the GUI layer
@@ -48,7 +49,16 @@ def is_port_open(host, port=445, timeout=2):
         return False
 
 
+HOST_LINE_RE = re.compile(r'^Host:\s+(\S+)\s+\(([^)]*)\)')
+
+
 def scan_smb_hosts(ip_range=None):
+    """
+    Returns a list of {"host": ip, "hostname": name_or_None}. The
+    hostname comes from nmap's own reverse-DNS lookup during the scan
+    if one resolved - not guaranteed on every network, but a nice
+    bonus for display purposes when it's there.
+    """
     if shutil.which("nmap") is None:
         raise RuntimeError(
             "nmap not found - install it from the Diagnostics tab"
@@ -59,7 +69,7 @@ def scan_smb_hosts(ip_range=None):
 
     cidr = f"{ip_range}.0/24"
 
-    hosts = []
+    results = []
 
     try:
         # One nmap process scanning the whole /24 range for the SMB
@@ -74,24 +84,29 @@ def scan_smb_hosts(ip_range=None):
             p.kill()
         except Exception:
             pass
-        return hosts
+        return results
     except Exception:
-        return hosts
+        return results
 
     for line in stdout.splitlines():
         if not line.startswith("Host:") or "445/open" not in line:
             continue
 
-        parts = line.split()
-        if len(parts) >= 2:
-            hosts.append(parts[1])
+        match = HOST_LINE_RE.match(line)
+        if not match:
+            continue
+
+        ip = match.group(1)
+        hostname = match.group(2).strip() or None
+
+        results.append({"host": ip, "hostname": hostname})
 
     try:
-        hosts.sort(key=lambda x: ipaddress.ip_address(x))
+        results.sort(key=lambda r: ipaddress.ip_address(r["host"]))
     except Exception:
-        hosts.sort()
+        results.sort(key=lambda r: r["host"])
 
-    return hosts
+    return results
 
 
 def share_accessible_as_guest(host, share):
