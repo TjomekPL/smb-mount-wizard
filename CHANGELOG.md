@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.15.0]
+
+### Added
+- Hostname display for LAN devices too (not just Tailscale): falls
+  back to a NetBIOS lookup (`nmblookup`) for any host reverse-DNS
+  didn't resolve a name for - reverse DNS is rarely configured on home
+  networks, but an SMB server almost always has a NetBIOS name.
+  `nmblookup` (samba-common-bin) added as a new "Recommended" tool in
+  Diagnostics.
+- Devices reachable both on the LAN and via Tailscale are now
+  recognized as the same machine (matched by hostname) and shown as
+  a single entry instead of twice - the LAN address is kept
+  (faster, doesn't depend on the VPN being up), unless only the
+  Tailscale address is available. Manually added servers are never
+  affected by this.
+
 ## [0.14.2]
 
 ### Debugging
