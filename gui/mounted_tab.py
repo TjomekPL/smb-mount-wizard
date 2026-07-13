@@ -30,7 +30,7 @@ def _usage_color(percent):
 
 def _split_source(source):
     """
-    '//192.168.0.201/storage' -> ('192.168.0.201', 'storage')
+    '//192.168.0.201/storage1' -> ('192.168.0.201', 'storage1')
     """
     if source.startswith("//"):
         rest = source[2:]
@@ -130,6 +130,18 @@ class MountedTab(QWidget):
         self._render_tree()
 
     def _render_tree(self):
+        # Remember what's currently selected (by mountpoint) before
+        # wiping the tree - _render_tree() runs on every periodic
+        # refresh (every 3s) as well as after user actions, and
+        # clear() creates entirely new item objects, silently losing
+        # any selection made in between. Restored after rebuilding
+        # below so "Unmount selected" keeps working on what the user
+        # actually clicked, even if a refresh happens in between.
+        selected_target = None
+        selected = self.tree.selectedItems()
+        if selected and selected[0].childCount() == 0:
+            selected_target = selected[0].text(1)
+
         self.tree.clear()
 
         display_map = get_server_display_map()
@@ -159,6 +171,10 @@ class MountedTab(QWidget):
 
                 child = QTreeWidgetItem([share, target, ""])
                 parent.addChild(child)
+
+                if selected_target and target == selected_target:
+                    child.setSelected(True)
+                    self.tree.setCurrentItem(child)
 
                 bar = QProgressBar()
                 bar.setTextVisible(True)

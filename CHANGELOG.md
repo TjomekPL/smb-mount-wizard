@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.16.1]
+
+### Fixed
+- Mounted tab: selecting a share and then clicking "Unmount selected"
+  could silently do nothing if the 3-second auto-refresh happened to
+  fire in between - the refresh rebuilds the tree from scratch,
+  which was quietly wiping out the selection. The currently selected
+  share (matched by its mountpoint) is now preserved across refreshes.
+
 ## [0.16.0]
 
 ### Added
