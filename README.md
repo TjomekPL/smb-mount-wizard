@@ -8,18 +8,36 @@ digging through Dolphin's network browser every time.
 
 - **Discovery** - scans the local subnet for SMB hosts (or add one
   manually by IP/hostname), lists shares, mounts with one click.
+- **Tailscale-aware** - if the `tailscale` CLI is present, devices on
+  your tailnet are discovered automatically alongside the regular LAN
+  scan, no separate button needed. A device reachable both on the LAN
+  and via Tailscale is shown once, not twice.
+- **Friendly names, not just IPs** - shows a hostname next to each
+  address (from Tailscale's device name, reverse DNS, or a NetBIOS
+  lookup) and uses it for the local mount folder name too
+  (`/mnt/nas/storage` instead of `/mnt/192_168_0_5/storage`) - the
+  actual SMB connection always still uses the real IP.
 - **Guest and authenticated mounts** - detects whether a share needs a
   login before asking, and only prompts for credentials when actually
-  required.
+  required. Credentials entered for browsing are reused for mounting
+  and vice versa, and are shared across a device's LAN/Tailscale
+  addresses instead of being asked for twice.
 - **Persistent mounts** - optionally writes a proper `/etc/fstab` entry
   (`x-systemd.automount`, credentials in a root-owned file) so a share
   survives a reboot, instead of requiring a manual re-mount every time.
-- **Saved credentials** - remembers login details per (host, share)
-  pair via the system keyring (KWallet / Secret Service), only after a
-  mount has actually succeeded.
-- **Mounted** tab - view and unmount active shares.
+- **Saved credentials** - remembers login details via the system
+  keyring (KWallet / Secret Service), only after a mount has actually
+  succeeded.
+- **Open without mounting** - a small folder-icon button next to each
+  share opens it directly in your file manager for a quick look,
+  without committing to a full mount.
+- **Mounted** tab - view active shares grouped by server, a disk usage
+  bar per share, and unmount (with automatic fallback to a lazy
+  unmount for a share whose connection died silently, e.g. after
+  suspend/resume).
 - **Diagnostics** tab - checks for required system tools (`nmap`,
-  `smbclient`, `cifs-utils`, `pkexec`) and installs anything missing.
+  `smbclient`, `cifs-utils`, `pkexec`) plus recommended ones
+  (`secret-tool`, `nmblookup`) and installs anything missing.
 - **Settings** - default mount location, SMB protocol version override,
   and a live-switchable EN/PL interface language.
 
@@ -49,7 +67,7 @@ installs all of these automatically. Only needed if you plan to run
 the app directly from the cloned folder instead.
 
 ```bash
-sudo apt install python3-pip python3-venv nmap smbclient cifs-utils libsecret-tools
+sudo apt install python3-pip python3-venv nmap smbclient cifs-utils libsecret-tools samba-common-bin
 sudo apt install policykit-1 || sudo apt install polkitd pkexec
 ```
 
@@ -63,19 +81,12 @@ what lets the installer create its own self-contained virtual
 environment, since Debian ships the `venv` module as a separate
 package rather than bundling it with `python3`.
 
-`libsecret-tools` is optional - without it, credentials just aren't
-remembered between sessions instead of the app failing. The app's own
+`libsecret-tools` and `samba-common-bin` are optional - without them,
+credentials just aren't remembered between sessions, and LAN devices
+show up without a friendly hostname next to the IP, respectively - the
+app doesn't fail, it just does a bit less. The app's own
 **Diagnostics** tab can check for and install the rest of these after
 you've got it running once.
-
-> **Note:** on newer Debian releases, `policykit-1` was split into two
-> packages. If `apt` says it has no candidate for `policykit-1`, use
-> this instead:
-> ```bash
-> sudo apt install python3-pip nmap smbclient cifs-utils polkitd pkexec libsecret-tools
-> ```
-> The app's own Diagnostics tab detects which naming your system uses
-> automatically, so this only matters for this first manual install.
 
 ### 3. Install the app
 
@@ -108,7 +119,7 @@ To get a known, tagged version instead of whatever is newest on the
 `main` branch:
 
 ```bash
-git clone --branch v0.8.1 https://github.com/TjomekPL/smb-mount-wizard.git
+git clone --branch v0.16.0 https://github.com/TjomekPL/smb-mount-wizard.git
 ```
 
 See the [Releases](https://github.com/TjomekPL/smb-mount-wizard/releases)
@@ -121,3 +132,9 @@ page for the full list of tagged versions and what changed in each.
   action.
 - Mounted shares default to `file_mode=0600,dir_mode=0700` - only the
   mounting user can read the contents locally.
+- "Open without mounting" browses via `smb://` (KDE's KIO/libsmbclient)
+  rather than the kernel's `cifs.ko`, which some servers with mandatory
+  SMB3 encryption don't negotiate correctly with over that path - the
+  app tries to detect this and explain it, but if a share is already
+  mounted, use that instead of the folder-icon button for a guaranteed
+  working view.

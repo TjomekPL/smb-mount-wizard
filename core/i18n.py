@@ -1,3 +1,4 @@
+# core/i18n.py
 from core.settings import get_settings, save_settings
 
 DEFAULT_LANGUAGE = "en"
@@ -33,6 +34,10 @@ TRANSLATIONS = {
         "wizard.mount_failed_title": "Mount failed",
         "wizard.unknown_error": "Unknown error",
         "wizard.host_unreachable": "Server {host} is not reachable right now (port 445 did not respond).",
+        "wizard.open_tooltip": "Open in file manager (without mounting)",
+        "wizard.open_failed_title": "Open failed",
+        "wizard.open_failed_message": "xdg-open is not available - install it to open shares directly in your file manager.",
+        "wizard.open_encryption_warning": "This server likely can't be browsed without mounting (often caused by mandatory SMB3 encryption, which the file manager's smb:// browsing doesn't support as well as a real mount does). Try 'Mount' instead.",
 
         "mounted.header_source": "Source",
         "mounted.header_target": "Mountpoint",
@@ -136,6 +141,10 @@ TRANSLATIONS = {
         "wizard.mount_failed_title": "Błąd montowania",
         "wizard.unknown_error": "Nieznany błąd",
         "wizard.host_unreachable": "Serwer {host} jest teraz nieosiągalny (port 445 nie odpowiada).",
+        "wizard.open_tooltip": "Otwórz w menedżerze plików (bez montowania)",
+        "wizard.open_failed_title": "Nie udało się otworzyć",
+        "wizard.open_failed_message": "xdg-open jest niedostępne - zainstaluj je, żeby otwierać udziały bezpośrednio w menedżerze plików.",
+        "wizard.open_encryption_warning": "Ten serwer najprawdopodobniej nie da się przeglądać bez montowania (często powoduje to wymuszone szyfrowanie SMB3, którego przeglądanie smb:// w menedżerze plików nie obsługuje tak dobrze jak prawdziwe montowanie). Spróbuj zamiast tego 'Zamontuj'.",
 
         "mounted.header_source": "Źródło",
         "mounted.header_target": "Punkt montowania",

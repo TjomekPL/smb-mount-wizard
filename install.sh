@@ -6,7 +6,7 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Installing required system packages (needs sudo)..."
 sudo apt-get update -qq
-sudo apt-get install -y python3-venv nmap smbclient cifs-utils libsecret-tools
+sudo apt-get install -y python3-venv nmap smbclient cifs-utils libsecret-tools samba-common-bin
 
 # policykit-1 was split into polkitd + pkexec on Debian 13 (trixie) and
 # newer - try the old single-package name first, fall back to the new

@@ -2,6 +2,106 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.17.7]
+
+### Fixed
+- `samba-common-bin` (needed for `nmblookup`, used since v0.15.0 for
+  LAN hostname display) was missing from both `install.sh` and
+  README's manual install instructions - added to both.
+
+### Changed
+- README rewritten to reflect the current feature set: Tailscale
+  discovery, hostname display and friendly mount paths, credential
+  sharing across LAN/Tailscale addresses, the server-grouped Mounted
+  tab with disk usage bars and lazy-unmount fallback, the "open
+  without mounting" button (and its smb://-encryption caveat), and
+  Diagnostics' required/recommended tool split.
+
+## [0.17.6]
+
+### Fixed
+- Listing shares on a host asked for login on every single app
+  restart, even when shares from that same server were already
+  mounted persistently (fstab) and their credentials were sitting
+  right there in the wallet - listing never checked the wallet at
+  all, only this session's in-memory cache (empty on every fresh
+  start). Now, before prompting, it checks whether any share on that
+  host is already mounted and tries that mount's saved wallet
+  credentials first.
+
+## [0.17.5]
+
+### Fixed
+- "Open in file manager" now checks whether the share is already
+  mounted through this app first - if so, it opens the real local
+  folder (`/mnt/servername/share`) directly instead of browsing
+  `smb://`, sidestepping the KIO/libsmbclient encryption-support
+  limitation entirely for anything already mounted. The smb://
+  browsing path (with its pre-check) is now only used for shares that
+  aren't mounted yet.
+
+## [0.17.4]
+
+### Fixed
+- Changing the display language rebuilds all tabs from scratch
+  (needed to re-render translated text), which was silently wiping
+  out this session's in-memory credential caches - forcing a fresh
+  login even for servers already used moments earlier. These caches
+  now live in a shared module (`core/session_cache.py`) instead of as
+  WizardTab instance attributes, so they survive a tab rebuild.
+- "Open in file manager" now does the same full credential lookup as
+  "Mount" (session cache, wallet, listing cache, then a login prompt
+  if genuinely needed) before testing browsability - previously it
+  could test with no credentials at all and misdiagnose "we don't
+  have a login yet" as "this server doesn't support browsing".
+- Discovery tab now refreshes each expanded host's Mount/Mounted
+  button state whenever the tab becomes visible again - previously,
+  unmounting a share from the Mounted tab left it shown as "Mounted"
+  back in Discovery until the app was restarted.
+
+### Known limitation
+- The pre-check before "Open in file manager" is a best-effort
+  heuristic using a separate smbclient connection - it can still miss
+  cases where KIO's own browsing session fails differently per-share
+  even on the same server (its own confusing error may still appear
+  occasionally).
+
+## [0.17.3]
+
+### Added
+- "Open in file manager" now tests the share via `smbclient` first,
+  using whatever credentials are already known for it, before handing
+  off to `xdg-open`. Some servers (notably those with
+  `smb encrypt = mandatory` in smb.conf) can fail here even though a
+  real mount works fine - libsmbclient's SMB3 encryption support lags
+  behind the kernel module's - and KDE's own error for that case is a
+  confusing "file or directory does not exist". A clear, own message
+  is now shown instead, suggesting "Mount" as the alternative.
+
+## [0.17.2]
+
+### Fixed
+- Saved mount credentials are now keyed by hostname (when known)
+  instead of the raw address - previously, the same physical server
+  reachable both via LAN and via Tailscale under two different IPs
+  was treated as two unrelated servers, each needing its own saved
+  password. They now share one wallet entry.
+
+## [0.17.1]
+
+### Fixed
+- Discovery tab: button rows (Mount/Persist/Open, and the server
+  remove button) now have a small right margin instead of touching
+  the column's edge directly.
+
+## [0.17.0]
+
+### Added
+- Small folder-icon button next to each share in Discovery to open it
+  directly in the system's file manager via `smb://host/share`
+  (through `xdg-open`), without mounting it through this app at all -
+  useful for a quick look without committing to a full mount.
+
 ## [0.16.2]
 
 ### Removed

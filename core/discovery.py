@@ -1,3 +1,4 @@
+# core/discovery.py
 import shutil
 import subprocess
 import os
@@ -7,22 +8,12 @@ import socket
 import re
 from core.runtime import run
 
-# Internal control-flow sentinels (NOT user-facing text - the GUI layer
-# maps these to translated strings via core.i18n.tr()). Keep these as
-# plain English constants so equality checks in the GUI stay stable
-# regardless of the selected display language.
 SENTINEL_LOGIN_REQUIRED = "Login required"
 SENTINEL_UNAVAILABLE = "Unavailable"
 SENTINEL_NO_SHARES = "No shares"
 
 
 def get_local_subnet():
-    """
-    Detects the /24 prefix of the current local network, based on the
-    IP address the system would use to route towards the internet.
-    Does not send any real packets (the UDP connect() call only makes
-    the kernel resolve a local source address via the routing table).
-    """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -36,12 +27,6 @@ def get_local_subnet():
 
 
 def is_port_open(host, port=445, timeout=2):
-    """
-    Quick, bounded reachability check - used right before mounting to
-    fail fast with a clear message instead of letting `mount` itself
-    block the whole app for a long OS-level TCP timeout (which can be
-    tens of seconds to minutes) when the server is simply offline.
-    """
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
@@ -53,14 +38,6 @@ HOST_LINE_RE = re.compile(r'^Host:\s+(\S+)\s+\(([^)]*)\)')
 
 
 def get_netbios_name(ip, timeout=3):
-    """
-    Resolves a host's actual NetBIOS/computer name via `nmblookup`.
-    Reverse DNS is rarely configured for home-network devices, but an
-    SMB server almost always has a NetBIOS name - this is a much more
-    reliable source for a display hostname on a LAN. Best effort:
-    returns None if nmblookup isn't installed (samba-common-bin) or
-    the lookup fails for any reason.
-    """
     if shutil.which("nmblookup") is None:
         return None
 
@@ -85,12 +62,6 @@ def get_netbios_name(ip, timeout=3):
 
 
 def scan_smb_hosts(ip_range=None):
-    """
-    Returns a list of {"host": ip, "hostname": name_or_None}. The
-    hostname comes from nmap's own reverse-DNS lookup during the scan
-    if one resolved - not guaranteed on every network, but a nice
-    bonus for display purposes when it's there.
-    """
     if shutil.which("nmap") is None:
         raise RuntimeError(
             "nmap not found - install it from the Diagnostics tab"
@@ -104,11 +75,6 @@ def scan_smb_hosts(ip_range=None):
     results = []
 
     try:
-        # One nmap process scanning the whole /24 range for the SMB
-        # port, instead of spawning a separate nmap process per host
-        # (254 processes) - nmap already parallelizes this internally,
-        # so a single invocation is both faster and much lighter on
-        # the system.
         p = run(["nmap", "-p", "445", "--open", "-oG", "-", cidr])
         stdout, _ = p.communicate(timeout=30)
     except subprocess.TimeoutExpired:
@@ -138,10 +104,6 @@ def scan_smb_hosts(ip_range=None):
     except Exception:
         results.sort(key=lambda r: r["host"])
 
-    # DNS reverse lookups rarely resolve on home networks - fall back
-    # to NetBIOS for any host we didn't already get a name for. Only
-    # tried for hosts that actually have SMB open, so this is a small,
-    # bounded number of extra calls, not one per scanned address.
     for r in results:
         if not r["hostname"]:
             r["hostname"] = get_netbios_name(r["host"])
@@ -149,13 +111,81 @@ def scan_smb_hosts(ip_range=None):
     return results
 
 
+def can_browse_share(host, share, username=None, password=None, timeout=5):
+    """
+    Tests whether a real tree-connect + listing succeeds for this
+    share via smbclient - the same underlying library (libsmbclient)
+    that KDE's smb:// KIO worker uses for "open without mounting".
+    Some servers (notably those with 'smb encrypt = mandatory' in
+    smb.conf) can fail here even though a real kernel-level
+    mount.cifs works fine - libsmbclient's encryption support lags
+    behind the kernel module's.
+    """
+    auth_file = None
+
+    try:
+        cmd = ["smbclient", f"//{host}/{share}", "-c", "ls"]
+
+        if username:
+            auth_content = f"username={username}\npassword={password or ''}\n"
+
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".authfile", delete=False
+            ) as f:
+                f.write(auth_content)
+                auth_file = f.name
+
+            os.chmod(auth_file, 0o600)
+            cmd += ["-A", auth_file]
+        else:
+            cmd += ["-N"]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return result.returncode == 0
+
+    except Exception:
+        return False
+
+    finally:
+        if auth_file:
+            try:
+                os.remove(auth_file)
+            except Exception:
+                pass
+
+
+def open_local_path(path):
+    """
+    Opens an already-mounted share's real local directory in the file
+    manager, instead of browsing smb://. Used whenever the share is
+    already mounted through this app - at that point it's just a
+    normal local folder, so this sidesteps any KIO/libsmbclient
+    limitations (like the mandatory-encryption issue) entirely.
+    """
+    try:
+        subprocess.Popen(
+            ["xdg-open", path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def open_in_file_manager(host, share):
+    try:
+        subprocess.Popen(
+            ["xdg-open", f"smb://{host}/{share}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def share_accessible_as_guest(host, share):
-    """
-    Checks (without root, without pkexec) whether a share can be read
-    anonymously. Used to decide BEFORE calling 'pkexec mount' whether
-    login is needed at all - this avoids asking for the account
-    password twice (once for a guest attempt, once for the real one).
-    """
     try:
         result = subprocess.run(
             ["smbclient", f"//{host}/{share}", "-N", "-c", "ls"],
@@ -175,12 +205,6 @@ def get_smb_shares(host, username=None, password=None):
         cmd = ["smbclient", "-L", host]
 
         if username:
-            # Use an auth file instead of '-U user%pass': smbclient
-            # treats '%' as the user/password separator in -U, so a
-            # password containing a literal '%' would be mangled.
-            # An auth file also avoids the credentials showing up in
-            # plain text via `ps aux` / /proc/<pid>/cmdline while
-            # smbclient is running.
             auth_content = f"username={username}\npassword={password or ''}\n"
 
             with tempfile.NamedTemporaryFile(

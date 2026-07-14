@@ -1,3 +1,4 @@
+# gui/wizard_tab.py
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -17,6 +18,9 @@ from core.discovery import (
     get_smb_shares,
     share_accessible_as_guest,
     is_port_open,
+    open_in_file_manager,
+    open_local_path,
+    can_browse_share,
     SENTINEL_LOGIN_REQUIRED,
     SENTINEL_UNAVAILABLE,
     SENTINEL_NO_SHARES,
@@ -33,6 +37,7 @@ from core.manual_servers import (
 from core.tailscale import get_tailscale_hosts
 from core.i18n import tr
 from core.settings import get_smb_version_override
+from core.session_cache import auth_cache, mount_auth_cache
 from kde import kwallet
 
 SENTINEL_DISPLAY_KEYS = {
@@ -42,27 +47,15 @@ SENTINEL_DISPLAY_KEYS = {
 }
 
 
-def _wallet_key(host, share):
-    return f"{host}::{share}"
+def _wallet_key(host, share, display_name=None):
+    identity = (display_name or host).lower()
+    return f"{identity}::{share}"
 
 
 class WizardTab(QWidget):
 
     def __init__(self):
         super().__init__()
-
-        # Credentials used just to LIST shares on a host (smbclient -L
-        # can't target a single share, so this stays host-scoped and
-        # in-memory only for the current session).
-        self.auth_cache = {}
-
-        # Credentials used to actually MOUNT a specific share. Keyed
-        # per (host, share) - different shares on the same server can
-        # need different logins, so these must never be shared across
-        # shares. Backed by the wallet (kde/kwallet.py) for persistence
-        # across sessions; this dict is just this session's fast cache
-        # on top of that.
-        self.mount_auth_cache = {}
 
         layout = QVBoxLayout()
 
@@ -85,7 +78,6 @@ class WizardTab(QWidget):
         self.tree.setColumnCount(2)
         self.tree.setHeaderLabels([tr("wizard.tree_header"), ""])
 
-        # fixed width for the first column, so IPs don't get clipped at startup
         self.tree.setColumnWidth(0, 350)
 
         self.tree.itemExpanded.connect(self.load_shares)
@@ -97,16 +89,58 @@ class WizardTab(QWidget):
 
         self.load_saved_servers()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_mount_states()
+
+    def refresh_mount_states(self):
+        try:
+            active_sources = {m["source"].lower() for m in get_real_mounts()}
+        except Exception:
+            active_sources = set()
+
+        for i in range(self.tree.topLevelItemCount()):
+            host_item = self.tree.topLevelItem(i)
+
+            if not host_item.isExpanded():
+                continue
+
+            host = host_item.data(0, Qt.ItemDataRole.UserRole)
+            if not isinstance(host, str):
+                continue
+
+            for j in range(host_item.childCount()):
+                child = host_item.child(j)
+                container = self.tree.itemWidget(child, 1)
+
+                if container is None or container.layout() is None:
+                    continue
+
+                lay = container.layout()
+                if lay.count() < 1:
+                    continue
+
+                btn = lay.itemAt(0).widget()
+                if not isinstance(btn, QPushButton):
+                    continue
+
+                share = child.text(0)
+                is_mounted = f"//{host}/{share}".lower() in active_sources
+
+                btn.setText(tr("wizard.mounted_button") if is_mounted else tr("wizard.mount_button"))
+                btn.setEnabled(not is_mounted)
+
+                if lay.count() > 1:
+                    persist_cb = lay.itemAt(1).widget()
+                    if isinstance(persist_cb, QCheckBox):
+                        persist_cb.setEnabled(not is_mounted)
+
     def add_host_row(self, host, display_map=None):
         host = str(host) if host is not None else ""
         hostname = (display_map or {}).get(host)
         label = f"{host} ({hostname})" if hostname else host
 
         item = QTreeWidgetItem([label])
-        # The real, connectable host is stored separately from the
-        # display label (which may include "(hostname)") so anything
-        # reading it back for actual connections never accidentally
-        # picks up the friendly-name suffix.
         item.setData(0, Qt.ItemDataRole.UserRole, host)
 
         item.addChild(QTreeWidgetItem([tr("wizard.loading")]))
@@ -125,11 +159,9 @@ class WizardTab(QWidget):
 
         remove_btn.clicked.connect(on_remove)
 
-        # wrapper widget so the button sticks to the right edge of the
-        # column instead of stretching across its whole width
         remove_container = QFrame()
         remove_lay = QHBoxLayout(remove_container)
-        remove_lay.setContentsMargins(0, 0, 4, 0)
+        remove_lay.setContentsMargins(0, 0, 8, 0)
         remove_lay.addStretch()
         remove_lay.addWidget(remove_btn)
 
@@ -157,9 +189,6 @@ class WizardTab(QWidget):
         except Exception:
             pass
 
-        # Quietly fold in Tailscale devices too, if the CLI is present -
-        # no separate button/toggle, just an extra source alongside the
-        # regular LAN scan.
         try:
             tailscale_hosts = get_tailscale_hosts()
         except Exception:
@@ -167,10 +196,6 @@ class WizardTab(QWidget):
 
         if scanned is not None or tailscale_hosts:
             combined = (scanned or []) + tailscale_hosts
-            # Only merge/prune when at least one scan actually ran - if
-            # neither did (e.g. nmap missing AND no Tailscale), don't
-            # wipe out previously discovered hosts just because we
-            # don't know this time whether they're still there.
             try:
                 merge_discovered(combined)
             except Exception:
@@ -211,7 +236,33 @@ class WizardTab(QWidget):
 
         item.takeChildren()
 
-        creds = self.auth_cache.get(host)
+        creds = auth_cache.get(host)
+
+        # Not cached in this session yet - but if any share on this
+        # host is ALREADY mounted (e.g. via a persistent/fstab mount
+        # from a previous run), its credentials are sitting in the
+        # wallet under this host's identity. Try that before asking
+        # the user to type in the same login yet again on every fresh
+        # app start, purely to see the share list.
+        if not creds:
+            display_name = get_server_display_map().get(host)
+            wallet_identity = (display_name or host).lower()
+
+            try:
+                existing_mounts = get_real_mounts()
+            except Exception:
+                existing_mounts = []
+
+            for m in existing_mounts:
+                source = m.get("source", "")
+                if not source.lower().startswith(f"//{host}".lower() + "/"):
+                    continue
+
+                existing_share = source.split("/", 3)[-1]
+                saved = kwallet.get_credentials(f"{wallet_identity}::{existing_share}")
+                if saved:
+                    creds = saved
+                    break
 
         try:
             if creds:
@@ -227,8 +278,13 @@ class WizardTab(QWidget):
             if dialog.exec():
                 username, password = dialog.get_credentials()
 
-                self.auth_cache[host] = (username, password)
+                auth_cache[host] = (username, password)
                 shares = get_smb_shares(host, username, password)
+        elif creds:
+            # The wallet-sourced credentials above worked - cache them
+            # for the rest of this session so we don't repeat this
+            # lookup on every expand of this host.
+            auth_cache[host] = creds
 
         try:
             active_sources = {m["source"].lower() for m in get_real_mounts()}
@@ -255,15 +311,78 @@ class WizardTab(QWidget):
             persist_checkbox.setToolTip(tr("wizard.persist_tooltip"))
             persist_checkbox.setEnabled(not is_mounted)
 
+            open_btn = QPushButton("\U0001F4C2")  # open folder emoji
+            open_btn.setFixedSize(28, 28)
+            open_btn.setToolTip(tr("wizard.open_tooltip"))
+
+            def on_open(_checked=False, h=host, s=share):
+                try:
+                    mounts = get_real_mounts()
+                except Exception:
+                    mounts = []
+
+                local_target = None
+                for m in mounts:
+                    if m.get("source", "").lower() == f"//{h}/{s}".lower():
+                        local_target = m.get("target")
+                        break
+
+                if local_target:
+                    if not open_local_path(local_target):
+                        QMessageBox.warning(
+                            self,
+                            tr("wizard.open_failed_title"),
+                            tr("wizard.open_failed_message")
+                        )
+                    return
+
+                creds = mount_auth_cache.get((h, s))
+
+                if not creds:
+                    wallet_key = _wallet_key(h, s, display_name=get_server_display_map().get(h))
+                    saved = kwallet.get_credentials(wallet_key)
+                    if saved:
+                        creds = saved
+
+                if not creds:
+                    creds = auth_cache.get(h)
+
+                if not creds and not share_accessible_as_guest(h, s):
+                    dialog = AuthDialog(h)
+
+                    if not dialog.exec():
+                        return
+
+                    creds = dialog.get_credentials()
+
+                username, password = creds if creds else (None, None)
+
+                if not can_browse_share(h, s, username, password):
+                    QMessageBox.warning(
+                        self,
+                        tr("wizard.open_failed_title"),
+                        tr("wizard.open_encryption_warning")
+                    )
+                    return
+
+                if not open_in_file_manager(h, s):
+                    QMessageBox.warning(
+                        self,
+                        tr("wizard.open_failed_title"),
+                        tr("wizard.open_failed_message")
+                    )
+
+            open_btn.clicked.connect(on_open)
+
             container = QFrame()
             lay = QHBoxLayout(container)
-            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setContentsMargins(0, 0, 8, 0)
             lay.addWidget(btn)
             lay.addWidget(persist_checkbox)
+            lay.addWidget(open_btn)
 
             def on_mount(_checked=False, h=host, s=share, btn=btn, persist_cb=persist_checkbox):
 
-                # hard guard against garbage arguments coming from Qt
                 if not isinstance(h, str) or not isinstance(s, str):
                     QMessageBox.critical(
                         self,
@@ -272,13 +391,8 @@ class WizardTab(QWidget):
                     )
                     return
 
-                # disable immediately to guard against a fast double-click
-                # firing two overlapping mount attempts for the same share
                 btn.setEnabled(False)
 
-                # Fail fast instead of letting `mount` itself block the
-                # whole app for a long OS-level TCP timeout when the
-                # server is simply offline right now.
                 if not is_port_open(h):
                     btn.setEnabled(True)
                     QMessageBox.critical(
@@ -289,56 +403,39 @@ class WizardTab(QWidget):
                     return
 
                 mount_key = (h, s)
-                wallet_key = _wallet_key(h, s)
+                display_name = get_server_display_map().get(h)
+                wallet_key = _wallet_key(h, s, display_name=display_name)
                 persist = persist_cb.isChecked()
 
-                # 1) already used this session?
-                creds_local = self.mount_auth_cache.get(mount_key)
+                creds_local = mount_auth_cache.get(mount_key)
 
-                # 2) saved from a previous session in the wallet?
                 if not creds_local:
                     saved = kwallet.get_credentials(wallet_key)
                     if saved:
                         creds_local = saved
 
-                # 3) reuse the credentials already entered to LIST
-                # shares on this host, if any - often the same login
-                # works for mounting too, so try that before asking
-                # the user to type it in again. If it turns out to be
-                # wrong for this particular share, the existing
-                # needs_auth retry below still catches it and prompts.
                 if not creds_local:
-                    listing_creds = self.auth_cache.get(h)
+                    listing_creds = auth_cache.get(h)
                     if listing_creds:
                         creds_local = listing_creds
 
-                # 4) nothing cached/saved - check BEFORE calling pkexec
-                # whether login is needed at all, so pkexec (account
-                # password) gets invoked only once instead of twice
-                # (guest attempt + real one).
                 if not creds_local and not share_accessible_as_guest(h, s):
                     dialog = AuthDialog(h)
 
                     if not dialog.exec():
                         btn.setEnabled(True)
-                        return  # user cancelled the login dialog
+                        return
 
                     username, password = dialog.get_credentials()
                     creds_local = (username, password)
-                    # NOT saved to the wallet yet - only once the mount
-                    # below actually succeeds with these values.
 
                 smb_version = get_smb_version_override() or None
-                display_name = get_server_display_map().get(h)
 
                 if creds_local:
                     result = mount_share(h, s, *creds_local, smb_version=smb_version, persist=persist, display_name=display_name)
                 else:
                     result = mount_share(h, s, smb_version=smb_version, persist=persist, display_name=display_name)
 
-                # Auth retry: covers both "no creds at all yet" and
-                # "we had cached/saved creds, but they turned out to be
-                # wrong" (e.g. password changed on the server since).
                 stderr = (result.get("stderr") or "").lower()
                 needs_auth = (
                     not result.get("success")
@@ -350,7 +447,7 @@ class WizardTab(QWidget):
 
                     def forget(k=wallet_key, mk=mount_key):
                         kwallet.forget_credentials(k)
-                        self.mount_auth_cache.pop(mk, None)
+                        mount_auth_cache.pop(mk, None)
 
                     dialog = AuthDialog(
                         h,
@@ -369,17 +466,12 @@ class WizardTab(QWidget):
                     btn.setEnabled(False)
                     persist_cb.setEnabled(False)
 
-                    # Only remember credentials once they are CONFIRMED
-                    # to work - never persist an unverified attempt.
                     if creds_local:
-                        self.mount_auth_cache[mount_key] = creds_local
+                        mount_auth_cache[mount_key] = creds_local
                         kwallet.save_credentials(wallet_key, *creds_local)
 
-                        # Also feed these back into the listing cache
-                        # for this host, so browsing other shares here
-                        # in this session doesn't ask again either.
-                        if not self.auth_cache.get(h):
-                            self.auth_cache[h] = creds_local
+                        if not auth_cache.get(h):
+                            auth_cache[h] = creds_local
 
                     QMessageBox.information(
                         self,
