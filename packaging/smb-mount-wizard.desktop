@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=SMB Mount Wizard
+Comment=Discover and mount SMB network shares
+Exec=/usr/bin/python3 /home/tomek/Desktop/smb-mount-wizard/main.py
+Path=/home/tomek/Desktop/smb-mount-wizard
+Icon=/home/tomek/Desktop/smb-mount-wizard/resources/icon.svg
+Terminal=false
+Type=Application
+Categories=System;Utility;Network;

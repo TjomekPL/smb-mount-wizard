@@ -104,10 +104,16 @@ class DiagnosticsTab(QWidget):
         for tool in get_optional_status():
             self._add_row(tool, recommended=True)
 
+        # Button stays enabled as long as anything (required or
+        # recommended) is still missing - clicking it always tackles
+        # required first, then recommended, one tier per click.
         any_missing = bool(get_missing_packages()) or bool(get_missing_optional_packages())
         self.install_btn.setEnabled(any_missing)
 
     def install_missing(self):
+        # Required tools first; only move on to recommended ones once
+        # nothing required is missing anymore, so a second click of
+        # the same button is what installs those.
         missing = get_missing_packages()
 
         if not missing:

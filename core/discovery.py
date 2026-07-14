@@ -7,12 +7,22 @@ import socket
 import re
 from core.runtime import run
 
+# Internal control-flow sentinels (NOT user-facing text - the GUI layer
+# maps these to translated strings via core.i18n.tr()). Keep these as
+# plain English constants so equality checks in the GUI stay stable
+# regardless of the selected display language.
 SENTINEL_LOGIN_REQUIRED = "Login required"
 SENTINEL_UNAVAILABLE = "Unavailable"
 SENTINEL_NO_SHARES = "No shares"
 
 
 def get_local_subnet():
+    """
+    Detects the /24 prefix of the current local network, based on the
+    IP address the system would use to route towards the internet.
+    Does not send any real packets (the UDP connect() call only makes
+    the kernel resolve a local source address via the routing table).
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -26,6 +36,12 @@ def get_local_subnet():
 
 
 def is_port_open(host, port=445, timeout=2):
+    """
+    Quick, bounded reachability check - used right before mounting to
+    fail fast with a clear message instead of letting `mount` itself
+    block the whole app for a long OS-level TCP timeout (which can be
+    tens of seconds to minutes) when the server is simply offline.
+    """
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
@@ -70,7 +86,10 @@ def get_netbios_name(ip, timeout=3):
 
 def scan_smb_hosts(ip_range=None):
     """
-    Returns a list of {"host": ip, "hostname": name_or_None}.
+    Returns a list of {"host": ip, "hostname": name_or_None}. The
+    hostname comes from nmap's own reverse-DNS lookup during the scan
+    if one resolved - not guaranteed on every network, but a nice
+    bonus for display purposes when it's there.
     """
     if shutil.which("nmap") is None:
         raise RuntimeError(
@@ -85,6 +104,11 @@ def scan_smb_hosts(ip_range=None):
     results = []
 
     try:
+        # One nmap process scanning the whole /24 range for the SMB
+        # port, instead of spawning a separate nmap process per host
+        # (254 processes) - nmap already parallelizes this internally,
+        # so a single invocation is both faster and much lighter on
+        # the system.
         p = run(["nmap", "-p", "445", "--open", "-oG", "-", cidr])
         stdout, _ = p.communicate(timeout=30)
     except subprocess.TimeoutExpired:
@@ -114,6 +138,10 @@ def scan_smb_hosts(ip_range=None):
     except Exception:
         results.sort(key=lambda r: r["host"])
 
+    # DNS reverse lookups rarely resolve on home networks - fall back
+    # to NetBIOS for any host we didn't already get a name for. Only
+    # tried for hosts that actually have SMB open, so this is a small,
+    # bounded number of extra calls, not one per scanned address.
     for r in results:
         if not r["hostname"]:
             r["hostname"] = get_netbios_name(r["host"])
@@ -122,6 +150,12 @@ def scan_smb_hosts(ip_range=None):
 
 
 def share_accessible_as_guest(host, share):
+    """
+    Checks (without root, without pkexec) whether a share can be read
+    anonymously. Used to decide BEFORE calling 'pkexec mount' whether
+    login is needed at all - this avoids asking for the account
+    password twice (once for a guest attempt, once for the real one).
+    """
     try:
         result = subprocess.run(
             ["smbclient", f"//{host}/{share}", "-N", "-c", "ls"],
@@ -141,6 +175,12 @@ def get_smb_shares(host, username=None, password=None):
         cmd = ["smbclient", "-L", host]
 
         if username:
+            # Use an auth file instead of '-U user%pass': smbclient
+            # treats '%' as the user/password separator in -U, so a
+            # password containing a literal '%' would be mangled.
+            # An auth file also avoids the credentials showing up in
+            # plain text via `ps aux` / /proc/<pid>/cmdline while
+            # smbclient is running.
             auth_content = f"username={username}\npassword={password or ''}\n"
 
             with tempfile.NamedTemporaryFile(

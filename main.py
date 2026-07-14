@@ -5,7 +5,7 @@ from gui.main_window import MainWindow
 
 
 def main():
-    # pozwala Ctrl+C i poprawne SIGTERM
+    # allows Ctrl+C and proper SIGTERM handling
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication(sys.argv)
@@ -13,7 +13,7 @@ def main():
     window = MainWindow()
     window.show()
 
-    # ważne: zamykanie całego procesu po zamknięciu okna
+    # important: quit the whole process once the window closes
     app.lastWindowClosed.connect(app.quit)
 
     sys.exit(app.exec())

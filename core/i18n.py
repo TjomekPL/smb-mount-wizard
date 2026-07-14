@@ -1,4 +1,3 @@
-# core/i18n.py
 from core.settings import get_settings, save_settings
 
 DEFAULT_LANGUAGE = "en"

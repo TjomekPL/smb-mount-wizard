@@ -1,4 +1,3 @@
-# gui/mounted_tab.py
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -21,16 +20,17 @@ from core.i18n import tr
 
 def _usage_color(percent):
     if percent >= 90:
-        return "#e74c3c"
+        return "#e74c3c"  # red - almost full
     elif percent >= 70:
-        return "#f39c2d"
+        return "#f39c2d"  # orange - getting full
     else:
-        return "#2a8fd8"
+        return "#2a8fd8"  # blue - plenty of room
 
 
 def _split_source(source):
     """
-    '//192.168.0.201/storage1' -> ('192.168.0.201', 'storage1')
+    '//192.168.0.201/storage' -> ('192.168.0.201', 'storage')
+    Falls back to (source, '') if it doesn't look like that shape.
     """
     if source.startswith("//"):
         rest = source[2:]
@@ -42,7 +42,13 @@ def _split_source(source):
 
 
 class _DiskUsageThread(QThread):
-    result_ready = pyqtSignal(dict)
+    """
+    Computes disk usage for a list of mountpoints off the GUI thread.
+    os.statvfs() can block for a few seconds on an unresponsive
+    network mount even with the 'soft' option - this must never run
+    directly in a Qt slot handler on the main thread.
+    """
+    result_ready = pyqtSignal(dict)  # {target: (used, total) or None}
 
     def __init__(self, targets):
         super().__init__()
@@ -66,6 +72,7 @@ class MountedTab(QWidget):
 
         layout = QVBoxLayout()
 
+        # ---------------- TREE ----------------
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels([
             tr("mounted.header_source"),
@@ -73,6 +80,9 @@ class MountedTab(QWidget):
             tr("mounted.header_usage"),
         ])
 
+        # Source and Usage get a sensible fixed-ish width (still
+        # user-resizable); Mountpoint absorbs whatever space is left,
+        # so there's no dead empty area after the last column.
         header = self.tree.header()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
@@ -84,6 +94,7 @@ class MountedTab(QWidget):
 
         layout.addWidget(self.tree)
 
+        # ---------------- BUTTONS ----------------
         btns = QHBoxLayout()
 
         self.refresh_btn = QPushButton(tr("mounted.refresh_button"))
@@ -103,12 +114,14 @@ class MountedTab(QWidget):
 
         self.setLayout(layout)
 
+        # auto refresh every 3s
         self.timer = QTimer()
         self.timer.timeout.connect(self.load_mounts)
         self.timer.start(3000)
 
         self.load_mounts()
 
+    # ---------------- LOAD ----------------
     def load_mounts(self):
         try:
             mounts = get_real_mounts()
@@ -118,6 +131,9 @@ class MountedTab(QWidget):
         self._current_mounts = mounts
         self._render_tree()
 
+        # Kick off a background usage check, but only if the previous
+        # one has finished - avoids piling up threads if a share is
+        # slow/unresponsive.
         if self._usage_thread is None or not self._usage_thread.isRunning():
             targets = [m.get("target") for m in mounts if m.get("target")]
             if targets:
@@ -146,6 +162,8 @@ class MountedTab(QWidget):
 
         display_map = get_server_display_map()
 
+        # group mounts by which server they came from, preserving the
+        # order servers first appear in
         groups = {}
         order = []
 
@@ -206,6 +224,7 @@ class MountedTab(QWidget):
 
                 self.tree.setItemWidget(child, 2, bar)
 
+    # ---------------- UNMOUNT ----------------
     def unmount_selected(self):
         selected = self.tree.selectedItems()
 
@@ -215,6 +234,7 @@ class MountedTab(QWidget):
         item = selected[0]
 
         if item.childCount() > 0:
+            # this is a server group row, not an individual share
             QMessageBox.information(
                 self,
                 tr("mounted.error_title"),

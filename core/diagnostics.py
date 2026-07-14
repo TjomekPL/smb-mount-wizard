@@ -1,4 +1,3 @@
-# core/diagnostics.py
 import os
 import shutil
 import subprocess
@@ -67,7 +66,7 @@ REQUIRED_TOOLS = [
 # credentials are simply kept in memory for the current session only
 # instead of being remembered between runs. Installed by "Install
 # missing" too, but only after everything in REQUIRED_TOOLS is
-# already satisfied (see get_missing_packages()/diagnostics_tab.py).
+# already satisfied (see diagnostics_tab.py).
 RECOMMENDED_TOOLS = [
     {
         "binary": "secret-tool",
@@ -80,10 +79,6 @@ RECOMMENDED_TOOLS = [
         "purpose_key": "diagnostics.purpose.nmblookup",
     },
 ]
-
-# Kept as an alias for compatibility with anything still referring to
-# the old name.
-OPTIONAL_TOOLS = RECOMMENDED_TOOLS
 
 
 def check_tool(binary):
@@ -124,7 +119,7 @@ def get_dependency_status():
 def get_optional_status():
     status = []
 
-    for tool in OPTIONAL_TOOLS:
+    for tool in RECOMMENDED_TOOLS:
         packages = _packages_for(tool)
         status.append({
             "binary": tool["binary"],
@@ -137,17 +132,12 @@ def get_optional_status():
     return status
 
 
-def get_missing_packages(include_optional=False):
+def get_missing_packages():
     missing = []
 
     for t in get_dependency_status():
         if not t["installed"]:
             missing.extend(t["packages"])
-
-    if include_optional:
-        for t in get_optional_status():
-            if not t["installed"]:
-                missing.extend(t["packages"])
 
     return missing
 

@@ -58,10 +58,24 @@ The second line handles a Debian packaging change: older releases ship
 (trixie) and newer split it into `polkitd` + `pkexec` instead. The
 command tries the old name first and falls back automatically.
 
+`python3-venv` is only needed if you use `install.sh` (below) - it's
+what lets the installer create its own self-contained virtual
+environment, since Debian ships the `venv` module as a separate
+package rather than bundling it with `python3`.
+
 `libsecret-tools` is optional - without it, credentials just aren't
 remembered between sessions instead of the app failing. The app's own
 **Diagnostics** tab can check for and install the rest of these after
 you've got it running once.
+
+> **Note:** on newer Debian releases, `policykit-1` was split into two
+> packages. If `apt` says it has no candidate for `policykit-1`, use
+> this instead:
+> ```bash
+> sudo apt install python3-pip nmap smbclient cifs-utils polkitd pkexec libsecret-tools
+> ```
+> The app's own Diagnostics tab detects which naming your system uses
+> automatically, so this only matters for this first manual install.
 
 ### 3. Install the app
 

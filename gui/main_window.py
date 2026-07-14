@@ -23,7 +23,6 @@ class MainWindow(QMainWindow):
 
         if ICON_PATH.exists():
             self.setWindowIcon(QIcon(str(ICON_PATH)))
-
         self.resize(900, 700)
 
         self.tabs = QTabWidget()
@@ -32,6 +31,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
     def build_tabs(self):
+        # deferred via QTimer when called from within a widget that is
+        # itself about to be torn down (e.g. a language change
+        # triggered from inside SettingsTab's own click handler)
         self.tabs.clear()
 
         self.tabs.addTab(WizardTab(), tr("tab.discovery"))
@@ -43,6 +45,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(DiagnosticsTab(), tr("tab.diagnostics"))
 
     def on_language_changed(self):
+        # deferred so the SettingsTab click handler that triggered this
+        # finishes running before its own widget gets torn down
         QTimer.singleShot(0, self.build_tabs)
 
     def closeEvent(self, event):
